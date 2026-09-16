@@ -1,16 +1,13 @@
-ID;address;city;postalCode;country;traveller_ID
-c3c3c3c3-0001-4333-8333-333333333301;123 Rue de Rivoli;Paris;75001;France;c1c1c1c1-0001-4111-8111-111111111101
-c3c3c3c3-0002-4333-8333-333333333302;56 Sukhumvit Road;Bangkok;10110;Thailand;c1c1c1c1-0001-4111-8111-111111111101
-c3c3c3c3-0003-4333-8333-333333333303;Kuta Beach Road;Bali;80361;Indonesia;c1c1c1c1-0002-4111-8111-111111111102
-c3c3c3c3-0004-4333-8333-333333333304;MG Road;Bangalore;560001;India;c1c1c1c1-0002-4111-8111-111111111102
-c3c3c3c3-0005-4333-8333-333333333305;350 Fifth Avenue;New York;10118;USA;c1c1c1c1-0003-4111-8111-111111111103
-c3c3c3c3-0006-4333-8333-333333333306;100 Queen Street;Sydney;2000;Australia;c1c1c1c1-0003-4111-8111-111111111103
-c3c3c3c3-0007-4333-8333-333333333307;78 Darling Harbour Rd;Sydney;2000;Australia;c1c1c1c1-0004-4111-8111-111111111104
-c3c3c3c3-0008-4333-8333-333333333308;1 Orchard Road;Singapore;238888;Singapore;c1c1c1c1-0004-4111-8111-111111111104
-c3c3c3c3-0009-4333-8333-333333333309;Bahnhofstrasse 1;Zurich;8001;Switzerland;c1c1c1c1-0005-4111-8111-111111111105
-c3c3c3c3-0010-4333-8333-333333333310;12 Rue de la Paix;Paris;75002;France;c1c1c1c1-0006-4111-8111-111111111106
-c3c3c3c3-0011-4333-8333-333333333311;3-5-7 Shibuya;Tokyo;150-0002;Japan;c1c1c1c1-0007-4111-8111-111111111107
-c3c3c3c3-0012-4333-8333-333333333312;2-3 Ginza;Tokyo;104-0061;Japan;c1c1c1c1-0007-4111-8111-111111111107
-c3c3c3c3-0013-4333-8333-333333333313;88 Nanjing Road;Shanghai;200001;China;c1c1c1c1-0008-4111-8111-111111111108
-c3c3c3c3-0014-4333-8333-333333333314;Jumeirah Beach Road;Dubai;00000;UAE;c1c1c1c1-0009-4111-8111-111111111109
-c3c3c3c3-0015-4333-8333-333333333315;Via del Corso 123;Rome;00186;Italy;c1c1c1c1-0010-4111-8111-111111111110
+ID;name;country;city;region;description
+d0000001-0000-4000-a000-000000000001;Paris;France;Île-de-France;City of Light — cultural heart of Europe with iconic landmarks and cuisine
+d0000001-0000-4000-a000-000000000002;Bangkok;Thailand;Central Thailand;Vibrant metropolis blending ancient temples with a modern skyline
+d0000001-0000-4000-a000-000000000003;Bali;Indonesia;Bali Province;Tropical paradise known for rice terraces, beaches, and spiritual culture
+d0000001-0000-4000-a000-000000000004;Bangalore;India;Karnataka;India's Silicon Valley — technology hub with a pleasant year-round climate
+d0000001-0000-4000-a000-000000000005;New York;United States;New York State;The Big Apple — iconic city of skyscrapers, culture, and world-class dining
+d0000001-0000-4000-a000-000000000006;Sydney;Australia;New South Wales;Harbour city famous for the Opera House, Bondi Beach, and vibrant lifestyle
+d0000001-0000-4000-a000-000000000007;Singapore;Singapore;Central Region;Modern city-state at the crossroads of Asia — clean, efficient, and cosmopolitan
+d0000001-0000-4000-a000-000000000008;Zurich;Switzerland;Zurich Canton;Financial capital set against a stunning Alps backdrop with pristine lake views
+d0000001-0000-4000-a000-000000000009;Tokyo;Japan;Kanto;World's largest city combining centuries-old tradition with cutting-edge futurism
+d0000001-0000-4000-a000-000000000010;Dubai;United Arab Emirates;Dubai Emirate;Ultra-modern desert metropolis with iconic architecture and tax-free luxury shopping
+d0000001-0000-4000-a000-000000000011;Rome;Italy;Lazio;Eternal City with 2000 years of history — the Colosseum, Vatican, and world-class art
+d0000001-0000-4000-a000-000000000012;Shanghai;China;Shanghai Municipality;China's global financial and business hub with a dazzling skyline and rich history

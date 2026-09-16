@@ -1,0 +1,188 @@
+/* TravelHub — custom styles */
+
+.thTile {
+    width: 11rem;
+}
+
+/* ===== Login 3D ash effect (Day 17) ===== */
+html, body { background: #050008; }
+
+.thLoginPage,
+.thLoginPage > .sapMPage,
+.thLoginPage section { background: transparent !important; }
+
+.thLoginBg {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 50%, #0a0014 0%, #050008 70%);
+}
+
+.thLoginBg::before,
+.thLoginBg::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: 60vw;
+    height: 60vw;
+    transform: translateY(-50%);
+    filter: blur(60px) saturate(150%);
+    pointer-events: none;
+}
+
+.thLoginBg::before {
+    left: -10vw;
+    background:
+        radial-gradient(circle at 30% 50%, rgba(0,200,255,0.55) 0%, transparent 45%),
+        radial-gradient(circle at 50% 60%, rgba(0,255,160,0.45) 0%, transparent 55%),
+        radial-gradient(circle at 20% 70%, rgba(120,80,255,0.45) 0%, transparent 60%);
+    animation: thAshDriftL 18s ease-in-out infinite alternate;
+}
+
+.thLoginBg::after {
+    right: -10vw;
+    background:
+        radial-gradient(circle at 60% 50%, rgba(255,40,180,0.55) 0%, transparent 45%),
+        radial-gradient(circle at 70% 60%, rgba(255,0,120,0.50) 0%, transparent 55%),
+        radial-gradient(circle at 80% 30%, rgba(180,0,255,0.45) 0%, transparent 60%);
+    animation: thAshDriftR 22s ease-in-out infinite alternate;
+}
+
+@keyframes thAshDriftL {
+    0%   { transform: translateY(-50%) translateX(0)    scale(1);   opacity: .85; }
+    50%  { transform: translateY(-55%) translateX(2vw)  scale(1.08); opacity: 1;   }
+    100% { transform: translateY(-45%) translateX(-2vw) scale(0.95); opacity: .8;  }
+}
+@keyframes thAshDriftR {
+    0%   { transform: translateY(-50%) translateX(0)    scale(1);   opacity: .85; }
+    50%  { transform: translateY(-45%) translateX(-2vw) scale(1.05); opacity: 1;   }
+    100% { transform: translateY(-55%) translateX(2vw)  scale(0.96); opacity: .8;  }
+}
+
+.thLoginBrand {
+    position: relative;
+    z-index: 2;
+    color: #ffffff;
+    letter-spacing: 0.4em;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    margin-bottom: 1.25rem;
+    text-shadow: 0 0 12px rgba(0,200,255,0.6), 0 0 24px rgba(255,40,180,0.4);
+    text-align: center;
+}
+
+.thLoginCard3D {
+    position: relative;
+    z-index: 2;
+    width: 34rem;
+    max-width: 92vw;
+    border-radius: 18px;
+    background: rgba(20, 18, 35, 0.55) !important;
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow:
+        0 0 60px rgba(186, 85, 255, 0.35),
+        0 0 25px rgba(0, 200, 255, 0.25),
+        inset 0 1px 0 rgba(255,255,255,0.10);
+    transform: perspective(900px) rotateX(2deg);
+}
+.thLoginCard3D .sapMPanelContent,
+.thLoginCard3D .sapMPanelWrappingDiv,
+.thLoginCard3D .sapMPanelHdr { background: transparent !important; border: none !important; }
+
+.thLoginInner { padding: 1.75rem 2.5rem; }
+
+.thLoginTitle.sapMTitle {
+    color: #ffffff !important;
+    text-align: center;
+    display: block;
+    margin-bottom: 1.25rem;
+    font-weight: 300;
+    letter-spacing: 0.05em;
+    font-size: 1.65rem;
+}
+
+.thFieldWrap { margin-bottom: 0.9rem; }
+.thFieldLabel.sapMLabel {
+    color: rgba(255,255,255,0.75) !important;
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+}
+
+.thInputRow { position: relative; align-items: center; width: 100%; }
+.thInputRow > .sapMFlexItem:first-child { flex: 1 1 auto; min-width: 0; }
+.thLoginInput { flex: 1; width: 100%; }
+.thLoginInput .sapMInputBaseInner,
+.thLoginInput .sapMInputBaseContentWrapper {
+    background: transparent !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-bottom: 1px solid rgba(255,255,255,0.35) !important;
+    border-radius: 0 !important;
+    padding-left: 0 !important;
+}
+.thLoginInput .sapMInputBaseInner::placeholder { color: rgba(255,255,255,0.4); }
+.thInputIcon {
+    color: rgba(255,255,255,0.7) !important;
+    margin-left: -1.4rem;
+    pointer-events: none;
+    font-size: 1rem;
+}
+
+.thLoginRow { margin: 0.4rem 0 1rem 0; }
+.thRemember .sapMCbLabel { color: rgba(255,255,255,0.75) !important; font-size: 0.8rem; }
+.thRemember .sapMCbBg { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.4); }
+.thForgot.sapMLnk { color: rgba(0,210,255,0.95) !important; font-size: 0.8rem; }
+
+.thLoginBtn {
+    width: 100% !important;
+    height: 2.6rem !important;
+}
+.thLoginBtn .sapMBtnInner {
+    background: #ffffff !important;
+    border-radius: 999px !important;
+    border: none !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 18px rgba(255,255,255,0.25);
+}
+.thLoginBtn .sapMBtnContent .sapMBtnDefault,
+.thLoginBtn .sapMBtnContent { color: #1a0030 !important; font-weight: 600; letter-spacing: 0.06em; }
+
+.thLoginFooter { margin-top: 1rem; }
+.thLoginFooter .sapMText { color: rgba(255,255,255,0.7); font-size: 0.85rem; }
+.thRegisterLink.sapMLnk {
+    color: #ffffff !important;
+    margin-left: 0.35rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 480px) {
+    .thLoginCard3D { transform: none; width: 90vw; }
+}
+
+/* ===== Donut glow pulse (Day 17) — glows the donut shapes only, NOT the panel frame ===== */
+.thDonutPanel {
+    position: relative;
+    border-radius: 12px;
+}
+
+/* Pulse is applied only to the SVG geometry inside the chart, never to the panel.
+   We target <path> (donut arcs) and <circle> (legend markers / center). */
+.thDonutGlow .sapVizFrame svg path,
+.thDonutGlow .sapVizFrame svg circle {
+    animation: thDonutShapePulse 10s ease-in-out forwards;
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+@keyframes thDonutShapePulse {
+    0%   { filter: drop-shadow(0 0 0    rgba(0,200,255,0));                                                  transform: scale(1); }
+    10%  { filter: drop-shadow(0 0 10px rgba(0,200,255,0.95))  drop-shadow(0 0 22px rgba(0,200,255,0.5));    transform: scale(1.015); }
+    30%  { filter: drop-shadow(0 0 12px rgba(120,80,255,0.95)) drop-shadow(0 0 24px rgba(120,80,255,0.5));   transform: scale(1.01); }
+    50%  { filter: drop-shadow(0 0 14px rgba(255,40,180,0.95)) drop-shadow(0 0 28px rgba(255,40,180,0.55));  transform: scale(1.02); }
+    70%  { filter: drop-shadow(0 0 12px rgba(0,255,160,0.95))  drop-shadow(0 0 24px rgba(0,255,160,0.5));    transform: scale(1.01); }
+    90%  { filter: drop-shadow(0 0 8px  rgba(255,200,0,0.85))  drop-shadow(0 0 18px rgba(255,200,0,0.4));    transform: scale(1.005); }
+    100% { filter: drop-shadow(0 0 0    rgba(0,0,0,0));                                                       transform: scale(1); }
+}

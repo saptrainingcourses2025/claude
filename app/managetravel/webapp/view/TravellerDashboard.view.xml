@@ -1,0 +1,36 @@
+<mvc:View controllerName="anubhav.claude.managetravel.controller.TravellerDashboard"
+          xmlns:mvc="sap.ui.core.mvc"
+          xmlns:core="sap.ui.core"
+          xmlns="sap.m"
+          displayBlock="true">
+    <Page id="travellerPage" title="My Travel Dashboard" showHeader="true">
+        <content>
+            <VBox class="sapUiContentPadding">
+                <!-- 1. Profile row -->
+                <core:Fragment fragmentName="anubhav.claude.managetravel.fragment.TravellerProfile" type="XML"/>
+
+                <!-- 2. Donut: my trips per destination -->
+                <core:Fragment fragmentName="anubhav.claude.managetravel.fragment.SpendDonutChart" type="XML"/>
+
+                <!-- 3. Tabs: Addresses (profile) + Travelled Locations (CRUD) -->
+                <IconTabBar id="travellerTabs" expandable="false" class="sapUiResponsiveMargin">
+                    <items>
+                        <IconTabFilter text="Addresses" icon="sap-icon://addresses" key="addresses">
+                            <core:Fragment fragmentName="anubhav.claude.managetravel.fragment.AddressesTab" type="XML"/>
+                        </IconTabFilter>
+                        <IconTabFilter text="Travelled Locations" icon="sap-icon://map" key="locations">
+                            <core:Fragment fragmentName="anubhav.claude.managetravel.fragment.TravelledLocationsTab" type="XML"/>
+                        </IconTabFilter>
+                    </items>
+                </IconTabBar>
+            </VBox>
+        </content>
+        <footer>
+            <OverflowToolbar>
+                <ToolbarSpacer/>
+                <Button id="saveBtn" text="Save" type="Emphasized"
+                        icon="sap-icon://save" press=".onSave"/>
+            </OverflowToolbar>
+        </footer>
+    </Page>
+</mvc:View>

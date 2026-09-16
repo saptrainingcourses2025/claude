@@ -1,0 +1,4 @@
+/plan comeup with a plan with below features to be enhanced with parallel subagents for below 3 tasks
+1. since we moved the destinations entity to a seperate service @srv/public-service.cds the fiori application is not working for the traveller role, so without changing the existing public-service, add the destination end point in the @srv/cat-service.cds
+2. Enhance the login screen with 3d ash effect with amazing look and feel without affecting anubhav trainings branding, must refer the  @material/day17/anubhav_login.jpg image to get precisely same screen
+3. Enhance the table for traveller under icon tab filer Travelled Locations to add cost and currency input in table, make sure the moment user enter and save a new travelled locations with cost, the donut chart refresh immediately. Add an amazing glow effect for 10 seconds to donut chart with custom css.

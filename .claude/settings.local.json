@@ -12,7 +12,40 @@
       "Bash(node *)",
       "Bash(powershell *)",
       "PowerShell(Get-ChildItem \"C:\\\\claude\\\\anubhav-claude\" -Force | Where-Object { $_.Name -ne \"node_modules\" } | Select-Object Name, Attributes)",
-      "PowerShell(Get-ChildItem . -Force | Where-Object { $_.Name -ne \"node_modules\" } | Select-Object Name, Attributes)"
+      "PowerShell(Get-ChildItem . -Force | Where-Object { $_.Name -ne \"node_modules\" } | Select-Object Name, Attributes)",
+      "Bash(Remove-Item \"C:\\\\claude\\\\anubhav-claude\\\\db\\\\data\\\\anubhav.claude-AppUsers.csv\" -Force)",
+      "Bash(Remove-Item \"C:\\\\claude\\\\anubhav-claude\\\\db\\\\data\\\\anubhav.claude-Contacts.csv\" -Force)",
+      "Bash(Remove-Item \"C:\\\\claude\\\\anubhav-claude\\\\db\\\\data\\\\anubhav.claude-Vacations.csv\" -Force)",
+      "Bash(Write-Output \"Deleted obsolete CSV files\")",
+      "Bash(curl -s -X POST http://localhost:4004/odata/v4/auth/login -H \"Content-Type: application/json\" -d '{\"loginName\":\"superadmin@anubhav.com\",\"password\":\"Welcome1!\"}')",
+      "Bash(echo \"exit: $?\")",
+      "Bash(curl -s -X POST http://localhost:4004/odata/v4/auth/login -H \"Content-Type: application/json\" -d '{\"loginName\":\"raj.sharma@example.com\",\"password\":\"Welcome1!\"}')",
+      "PowerShell(npx cds compile srv 2>&1 | Select-Object -Last 30)",
+      "Skill(sap-fiori)",
+      "Bash(claude mcp *)",
+      "mcp__fiori__list_functionality",
+      "mcp__fiori__search_docs",
+      "PowerShell(npx cds compile app/services.cds --to edmx 2>&1 | Select-Object -First 40)",
+      "Bash(grep -v \"//\")",
+      "PowerShell(Get-Item *)",
+      "Bash(grep -v \"^$\")",
+      "Bash(git -C /c/claude/anubhav-claude status --short)",
+      "Bash(sqlite3 *)",
+      "PowerShell(claude mcp *)",
+      "PowerShell(Stop-Process *)",
+      "PowerShell(npm view *)",
+      "mcp__sqlite__list_tables",
+      "mcp__sqlite__describe_table",
+      "mcp__sqlite__read_query",
+      "mcp__github__list_issues",
+      "Bash(curl -s 'http://localhost:4004/odata/v4/catalog/TravelledLocations?$top=1' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjNWM1YzVjNS0wMDA2LTQ1NTUtODU1NS01NTU1NTU1NTU1MDYiLCJyb2xlcyI6WyJUUkFWRUxMRVIiXSwiaWF0IjoxNzc5OTczMjYxLCJleHAiOjE3Nzk5NzQxNjEsImF1ZCI6ImFjY2VzcyJ9.qIpi5CG2Ku9VB5zhiftJugkOb8t3aQ91iHTGO7TffqM')",
+      "Bash(curl *)",
+      "Bash(npm ls *)",
+      "Bash(npx eslint *)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "fiori"
+  ]
 }

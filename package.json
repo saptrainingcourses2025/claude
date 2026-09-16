@@ -3,14 +3,31 @@
   "version": "1.0.0",
   "description": "A simple CAP project.",
   "dependencies": {
+    "@cap-js-community/odata-v2-adapter": "^1.15.12",
     "@sap/cds": "^9",
-    "express": "^4"
+    "bcryptjs": "^2.4.3",
+    "express": "^4",
+    "jsonwebtoken": "^9.0.3"
   },
   "devDependencies": {
-    "@cap-js/sqlite": "^2"
+    "@cap-js/sqlite": "^2",
+    "http-server": "^14.1.1",
+    "puppeteer": "^25.1.0"
+  },
+  "cds": {
+    "requires": {
+      "auth": {
+        "kind": "custom",
+        "impl": "./srv/auth/jwt-auth.js"
+      }
+    }
   },
   "scripts": {
     "start": "cds-serve"
   },
-  "private": true
+  "private": true,
+  "sapux": [
+    "app/managetravel",
+    "app/managedest"
+  ]
 }

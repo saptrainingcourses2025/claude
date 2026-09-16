@@ -1,0 +1,12 @@
+<core:FragmentDefinition xmlns="sap.m" xmlns:core="sap.ui.core">
+    <Panel class="sapUiResponsiveMargin" width="auto">
+        <HBox alignItems="Center">
+            <core:Icon src="sap-icon://person-placeholder" size="3rem" class="sapUiMediumMarginEnd"/>
+            <VBox>
+                <Title text="{= ${firstName} + ' ' + ${lastName} }" level="H2"/>
+                <Text text="{= (${addressType/name} || ${addressType_code} || 'No address type') + (${phone} ? ' · ' + ${phone} : '') }"/>
+                <Text text="{email}" class="sapUiTinyMarginTop"/>
+            </VBox>
+        </HBox>
+    </Panel>
+</core:FragmentDefinition>

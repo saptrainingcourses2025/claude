@@ -1,0 +1,45 @@
+<core:FragmentDefinition xmlns="sap.m" xmlns:core="sap.ui.core">
+    <Table id="locationsTable" mode="MultiSelect"
+           itemPress=".onLocationPress"
+           items="{path: 'locations', parameters: {$$updateGroupId: 'travellerChanges', $expand: 'destination'}}">
+        <headerToolbar>
+            <OverflowToolbar>
+                <Title text="Travelled Locations" level="H3"/>
+                <ToolbarSpacer/>
+                <Button icon="sap-icon://add" text="Add" press=".onAddLocation"/>
+                <Button icon="sap-icon://delete" text="Delete" type="Transparent"
+                        press=".onDeleteLocation"/>
+            </OverflowToolbar>
+        </headerToolbar>
+        <columns>
+            <Column><Text text="Destination"/></Column>
+            <Column><Text text="Travel From"/></Column>
+            <Column><Text text="Travel To"/></Column>
+            <Column><Text text="Notes"/></Column>
+            <Column hAlign="End"><Text text="{i18n>locations.cost}"/></Column>
+            <Column><Text text="{i18n>locations.currency}"/></Column>
+        </columns>
+        <items>
+            <ColumnListItem type="Navigation">
+                <cells>
+                    <Select selectedKey="{destination_ID}"
+                            forceSelection="false"
+                            items="{path: '/Destinations', templateShareable: false}">
+                        <core:Item key="{ID}" text="{name}"/>
+                    </Select>
+                    <DatePicker value="{travelFrom}"
+                                valueFormat="yyyy-MM-dd" displayFormat="yyyy-MM-dd"/>
+                    <DatePicker value="{travelTo}"
+                                valueFormat="yyyy-MM-dd" displayFormat="yyyy-MM-dd"/>
+                    <Input value="{notes}" placeholder="Notes"/>
+                    <Input value="{cost}" type="Number" textAlign="End"/>
+                    <Select selectedKey="{currency_code}" forceSelection="false"
+                            change=".onCurrencyChange"
+                            items="{path: '/Currencies', parameters: {$select: 'code,name', $orderby: 'code'}, templateShareable: false}">
+                        <core:Item key="{code}" text="{code} — {name}"/>
+                    </Select>
+                </cells>
+            </ColumnListItem>
+        </items>
+    </Table>
+</core:FragmentDefinition>

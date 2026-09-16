@@ -1,0 +1,38 @@
+<core:FragmentDefinition xmlns="sap.m" xmlns:core="sap.ui.core">
+    <Table id="addressesTable" mode="MultiSelect"
+           items="{path: 'addresses', parameters: {$$updateGroupId: 'travellerChanges', $expand: 'addressType'}}">
+        <headerToolbar>
+            <OverflowToolbar>
+                <Title text="My Addresses" level="H3"/>
+                <ToolbarSpacer/>
+                <Button icon="sap-icon://add" text="Add" press=".onAddAddress"/>
+                <Button icon="sap-icon://delete" text="Delete" type="Transparent"
+                        press=".onDeleteAddress"/>
+            </OverflowToolbar>
+        </headerToolbar>
+        <columns>
+            <Column><Text text="Type"/></Column>
+            <Column><Text text="Street"/></Column>
+            <Column><Text text="City"/></Column>
+            <Column><Text text="Postal Code"/></Column>
+            <Column><Text text="Country"/></Column>
+            <Column hAlign="Center"><Text text="Primary"/></Column>
+        </columns>
+        <items>
+            <ColumnListItem>
+                <cells>
+                    <Select selectedKey="{addressType_code}"
+                            forceSelection="false"
+                            items="{path: '/AddressTypes', templateShareable: false}">
+                        <core:Item key="{code}" text="{name}"/>
+                    </Select>
+                    <Input value="{street}" placeholder="Street"/>
+                    <Input value="{city}" placeholder="City"/>
+                    <Input value="{postalCode}" placeholder="Postal code"/>
+                    <Input value="{country}" placeholder="Country"/>
+                    <Switch state="{isPrimary}" customTextOn="Yes" customTextOff="No"/>
+                </cells>
+            </ColumnListItem>
+        </items>
+    </Table>
+</core:FragmentDefinition>

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "caveman": {
+      "source": "juliusbrussee/caveman",
+      "sourceType": "github",
+      "skillPath": "skills/caveman/SKILL.md",
+      "computedHash": "7935e83f9c6a8b7cbb5404d144b0d19e3ba93583f4388301c3dada37cd25adf8"
+    },
+    "oauth-social-login": {
+      "source": "dadbodgeoff/drift",
+      "sourceType": "github",
+      "skillPath": "drift v1 depreciated/skills/oauth-social-login/SKILL.md",
+      "computedHash": "3bbbc4f28f4366a9daf080480699dca81aada2c375b90b45cd9add1ae647c728"
+    },
+    "sap-fiori": {
+      "source": "SAP-samples/cap-agentic-engineered",
+      "sourceType": "github",
+      "skillPath": "skills/sap-fiori/SKILL.md",
+      "computedHash": "568a687549bcc1adab18545793c05ef28c7c2edfb08a921dbbf603f65a4f605a"
+    }
+  }
+}

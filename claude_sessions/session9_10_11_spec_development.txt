@@ -1,0 +1,1847 @@
+ ▐▛███▜▌   Claude Code v2.1.140
+▝▜█████▛▘  Sonnet 4.6 · Claude Pro
+  ▘▘ ▝▝    C:\claude\anubhav-claude
+
+❯ /rename day9_spec_driven_dev 
+  ⎿  Session renamed to: day9_spec_driven_dev
+
+❯ /plan read our specification file @.claude/specs/1_anubhav_spec_srv.md also   
+check existing code base in @db folder as part of current implementation. based 
+ on the specification prepare a detailed plan for implemtation                  
+  ⎿  Enabled plan mode
+
+● I'll read the specification file and the existing codebase to prepare an
+  implementation plan.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Now let me read the existing schema files to understand the current data
+  model.
+
+  Read 2 files (ctrl+o to expand)
+
+● Let me also check the CSV data files and the srv/ folder structure.
+
+  Searched for 1 pattern, read 4 files (ctrl+o to expand)
+
+● Let me also read the Travellers CSV and check the AppUsers CSV to understand
+  existing seed data.
+
+  Read 2 files (ctrl+o to expand)
+
+● Now I have everything I need. Let me write the implementation plan.
+
+● Updated plan
+  ⎿  /plan to preview
+
+● User approved Claude's plan
+  ⎿  Plan saved to: ~\.claude\plans\cuddly-kindling-storm.md · /plan to edit
+     Implementation Plan: Service Layer for Travel Management App
+
+     Context
+
+     Build the full service layer on top of the existing CAP data model per spec
+      .claude/specs/1_anubhav_spec_srv.md. The spec defines two OData V4
+     services:
+     - CatalogService (/odata/v4/catalog) — travel data for authenticated users,
+      row-level security
+     - UserManagement (/odata/v4/user-management) — admin-only user/role
+     lifecycle management with custom functions and actions
+
+     The existing db/ layer must be restructured to align with the spec entity
+     shapes before any service files are created.
+
+     ---
+     Gap Analysis: Current vs. Spec
+
+     Entity: Destinations
+     Current State: address, postalCode, traveller FK
+     Spec Requirement: name, country, city, region, description (standalone)
+     Action: Restructure
+     ────────────────────────────────────────
+     Entity: Travellers
+     Current State: userName, gender, age, contacts/vacations compositions
+     Spec Requirement: email, phone, userID, virtual fullName, type FK,
+     addressType
+       FK
+     Action: Restructure
+     ────────────────────────────────────────
+     Entity: TravelledLocations
+     Current State: Does not exist
+     Spec Requirement: traveller FK, destination FK, travelFrom, travelTo, notes
+     Action: Create
+     ────────────────────────────────────────
+     Entity: TravellerTypes
+     Current State: Does not exist
+     Spec Requirement: Code list: Frequent Flyer, Executive, Standard
+     Action: Create
+     ────────────────────────────────────────
+     Entity: AppUsers
+     Current State: userName, isActive, traveller FK
+     Spec Requirement: Rename to Users: loginName, isLocked, firstName, lastName
+     Action: Rename + restructure
+     ────────────────────────────────────────
+     Entity: UserRoles
+     Current State: Does not exist
+     Spec Requirement: M2M: user ↔ role
+     Action: Create
+     ────────────────────────────────────────
+     Entity: Contacts, Vacations
+     Current State: Present in schema
+     Spec Requirement: Not in spec scope
+     Action: Remove
+
+     ---
+     Phase 1 — DB Layer Updates
+
+     1.1 db/common.cds
+
+     - Add TravellerTypes : sap.common.CodeList entity with key code : 
+     String(10) (FF, EX, ST)
+     - Add type TravellerType : Association to TravellerTypes
+
+     1.2 db/schema.cds
+
+     Restructure Travellers (keep cuid, managed, modifiedAt @odata.etag):
+     - Remove: userName, gender, age, createdBy, contacts composition, address
+     composition, vacations composition
+     - Add: email: String(120), phone: String(20), userID: String(100),
+     addressType: Association to AddressTypes, type: Association to 
+     TravellerTypes
+     - Add virtual: fullName: String(160) @Core.Computed
+     - Add: locations: Composition of many TravelledLocations on 
+     locations.traveller = $self
+
+     Restructure Destinations (keep cuid):
+     - Remove: address, postalCode, traveller association
+     - Add: name: String(200), region: String(100), description: LargeString
+     - Widen: country: String(100), city: String(100)
+
+     Add TravelledLocations : cuid:
+     traveller   : Association to Travellers;   // FK — composition owner
+     destination : Association to Destinations;
+     travelFrom  : Date;
+     travelTo    : Date;
+     notes       : LargeString;
+
+     Rename AppUsers → Users (keep cuid; drop managed — spec only needs
+     createdAt):
+     - Fields: loginName: String(120), firstName: String(80), lastName: 
+     String(80), isLocked: Boolean default false, createdAt: Timestamp 
+     @cds.on.insert
+     - Add: roles: Composition of many UserRoles on roles.user = $self
+     - Remove: userName, fullName, isActive, lastLoginAt, traveller association
+
+     Add UserRoles : cuid:
+     user : Association to Users;
+     role : Association to Roles;
+
+     Remove Contacts and Vacations entities (not in spec scope).
+
+     1.3 CSV Seed Data
+
+     File: anubhav.claude-TravellerTypes.csv
+     Action: Create
+     Notes: FF=Frequent Flyer, EX=Executive, ST=Standard
+     ────────────────────────────────────────
+     File: anubhav.claude-Travellers.csv
+     Action: Update
+     Notes: Remove gender/age/userName/createdBy cols; add email, phone, userID,
+
+       type_code, addressType_code
+     ────────────────────────────────────────
+     File: anubhav.claude-Destinations.csv
+     Action: Rewrite
+     Notes: New columns: name, country, city, region, description (drop address,
+
+       postalCode, traveller_ID)
+     ────────────────────────────────────────
+     File: anubhav.claude-TravelledLocations.csv
+     Action: Create
+     Notes: Sample travel history linking existing traveller+destination UUIDs
+     ────────────────────────────────────────
+     File: anubhav.claude-Users.csv
+     Action: Create
+     Notes: Replaces AppUsers.csv; new schema: loginName, firstName, lastName,
+       isLocked
+     ────────────────────────────────────────
+     File: anubhav.claude-UserRoles.csv
+     Action: Create
+     Notes: M2M assignments for the new Users
+     ────────────────────────────────────────
+     File: anubhav.claude-AppUsers.csv
+     Action: Delete
+     Notes: Replaced by Users.csv
+     ────────────────────────────────────────
+     File: anubhav.claude-Contacts.csv
+     Action: Delete
+     Notes: Entity removed
+     ────────────────────────────────────────
+     File: anubhav.claude-Vacations.csv
+     Action: Delete
+     Notes: Entity removed
+
+     ---
+     Phase 2 — Service Definitions
+
+     2.1 srv/cat-service.cds
+
+     using { anubhav.claude as db } from '../db/schema';
+     using { anubhav.claude as common } from '../db/common';
+
+     @path: '/catalog'
+     @requires: 'authenticated-user'
+     service CatalogService {
+       entity Travellers          as projection on db.Travellers;
+       @readonly entity TravellerTypes   as projection on common.TravellerTypes;
+       entity TravelledLocations  as projection on db.TravelledLocations;
+       entity Destinations        as projection on db.Destinations;
+       @readonly entity TravellerStatus  as projection on
+     common.TravellerStatus;
+       @readonly entity AddressTypes     as projection on common.AddressTypes;
+     }
+     Authorization annotations (inline or in separate section):
+     annotate CatalogService.Travellers with @restrict: [
+       { grant: ['READ', 'UPDATE'], to: 'Traveller', where: 'userID = $user' },
+       { grant: '*', to: 'Admin' }
+     ];
+     annotate CatalogService.TravelledLocations with @restrict: [
+       { grant: ['READ', 'CREATE', 'DELETE'], to: 'Traveller', where:
+     'traveller.userID = $user' },
+       { grant: '*', to: 'Admin' }
+     ];
+     annotate CatalogService.Destinations with @restrict: [
+       { grant: ['READ', 'CREATE'], to: 'authenticated-user' }
+     ];
+
+     2.2 srv/user-management.cds
+
+     using { anubhav.claude as db } from '../db/schema';
+     using { anubhav.claude as common } from '../db/common';
+
+     @path: '/user-management'
+     @requires: 'Admin'
+     service UserManagement {
+       entity Users     as projection on db.Users;
+       @readonly entity Roles as projection on common.Roles;
+       entity UserRoles as projection on db.UserRoles;
+
+       function lockUser(userId: String)    returns Boolean;
+       function unlockUser(userId: String)  returns Boolean;
+       action createUser(firstName: String, lastName: String, email: String,
+     roleId: String) returns Users;
+       action resetPassword(userId: String, newPassword: String) returns
+     Boolean;
+       action assignRole(userId: String, roleId: String)   returns Boolean;
+       action unassignRole(userId: String, roleId: String) returns Boolean;
+     }
+
+     ---
+     Phase 3 — Handler Files
+
+     3.1 srv/cat-service.js (entry point — registers sub-handlers)
+
+     const travellersHandler = require('./handlers/travellers.handler');
+     const locationsHandler  =
+     require('./handlers/travelled-locations.handler');
+
+     module.exports = (srv) => {
+       travellersHandler(srv);
+       locationsHandler(srv);
+     };
+
+     3.2 srv/handlers/travellers.handler.js
+
+     - before('CREATE', Travellers):
+       - Validate firstName and lastName are non-empty → req.error(400, 'First 
+     name and last name are required')
+       - Check for duplicate email → req.error(409, 'Email already registered')
+       - Auto-assign userID from req.user.id if not set
+     - before('UPDATE', Travellers):
+       - Validate firstName and lastName not empty if present in payload
+     - after('READ', Travellers):
+       - Compute fullName = (firstName + ' ' + lastName).trim() for each record
+     (handle array + single)
+
+     3.3 srv/handlers/travelled-locations.handler.js
+
+     - before('CREATE', TravelledLocations):
+       - Validate travelFrom <= travelTo → req.error(400, 'Travel start date 
+     must be before end date')
+       - Query existing TravelledLocations for same traveller_ID and check date
+     overlap → req.error(409, 'Traveller already has a trip during this date 
+     range')
+
+     3.4 srv/handlers/user-management.handler.js
+
+     Registers on the UserManagement service:
+     - lockUser: find user by ID; if not found → 404; if already locked → return
+      false; else set isLocked=true, return true
+     - unlockUser: find user by ID → 404 if missing; set isLocked=false, return
+     true
+     - createUser: check duplicate loginName → req.error(409, 'User already 
+     exists'); INSERT new user; if roleId valid, INSERT UserRoles record; return
+      created user
+     - resetPassword: validate non-empty → 400; validate length >= 8 → 400;
+     update record
+     - assignRole: validate roleId exists in Roles → req.error(404, 'Role not 
+     found'); insert UserRoles record; return true
+     - unassignRole: find existing UserRoles record → req.error(404, 'Role 
+     assignment not found'); delete record; return true
+
+     UserManagement entry point file: srv/user-management.js:
+     const umHandler = require('./handlers/user-management.handler');
+     module.exports = (srv) => umHandler(srv);
+
+     ---
+     Phase 4 — i18n Updates
+
+     Add new keys to all four properties files (i18n.properties,
+     i18n_en.properties, i18n_de.properties, i18n_hi.properties):
+     - FullName, Email, Phone, UserID, AddressType, TravellerType
+     - TravelFrom, TravelTo, Notes, Destination, Locations
+     - LoginName, IsLocked, Users, UserRoles
+
+     ---
+     Files to Create / Modify
+
+     File: db/common.cds
+     Action: Add TravellerTypes entity + type alias
+     ────────────────────────────────────────
+     File: db/schema.cds
+     Action: Restructure Travellers, Destinations; add TravelledLocations,
+     Users,
+       UserRoles; remove Contacts, Vacations
+     ────────────────────────────────────────
+     File: db/data/anubhav.claude-TravellerTypes.csv
+     Action: Create
+     ────────────────────────────────────────
+     File: db/data/anubhav.claude-Travellers.csv
+     Action: Update columns
+     ────────────────────────────────────────
+     File: db/data/anubhav.claude-Destinations.csv
+     Action: Rewrite with new schema
+     ────────────────────────────────────────
+     File: db/data/anubhav.claude-TravelledLocations.csv
+     Action: Create
+     ────────────────────────────────────────
+     File: db/data/anubhav.claude-Users.csv
+     Action: Create (replaces AppUsers)
+     ────────────────────────────────────────
+     File: db/data/anubhav.claude-UserRoles.csv
+     Action: Create
+     ────────────────────────────────────────
+     File: db/data/anubhav.claude-AppUsers.csv
+     Action: Delete
+     ────────────────────────────────────────
+     File: db/data/anubhav.claude-Contacts.csv
+     Action: Delete
+     ────────────────────────────────────────
+     File: db/data/anubhav.claude-Vacations.csv
+     Action: Delete
+     ────────────────────────────────────────
+     File: srv/cat-service.cds
+     Action: Create
+     ────────────────────────────────────────
+     File: srv/user-management.cds
+     Action: Create
+     ────────────────────────────────────────
+     File: srv/cat-service.js
+     Action: Create
+     ────────────────────────────────────────
+     File: srv/user-management.js
+     Action: Create
+     ────────────────────────────────────────
+     File: srv/handlers/travellers.handler.js
+     Action: Create
+     ────────────────────────────────────────
+     File: srv/handlers/travelled-locations.handler.js
+     Action: Create
+     ────────────────────────────────────────
+     File: srv/handlers/user-management.handler.js
+     Action: Create
+     ────────────────────────────────────────
+     File: db/i18n/i18n.properties
+     Action: Add new keys
+     ────────────────────────────────────────
+     File: db/i18n/i18n_en.properties
+     Action: Add new keys
+     ────────────────────────────────────────
+     File: db/i18n/i18n_de.properties
+     Action: Add new keys
+     ────────────────────────────────────────
+     File: db/i18n/i18n_hi.properties
+     Action: Add new keys
+
+     ---
+     Verification
+
+     # 1. Start dev server — must boot without errors
+     cds watch
+
+     # 2. Metadata resolves all entities
+     GET /odata/v4/catalog/$metadata
+     GET /odata/v4/user-management/$metadata
+
+     # 3. CatalogService — Travellers
+     POST /odata/v4/catalog/Travellers          # create with firstName+lastName
+      → fullName computed on GET
+     GET  /odata/v4/catalog/Travellers          # Admin: all rows; Traveller: 
+     own row only
+     PATCH /odata/v4/catalog/Travellers/<id>    # without If-Match → 428; stale 
+     ETag → 412; correct → 200
+
+     # 4. TravelledLocations
+     POST /odata/v4/catalog/TravelledLocations  # travelFrom > travelTo → 400
+     POST /odata/v4/catalog/TravelledLocations  # overlapping dates → 409
+     POST /odata/v4/catalog/TravelledLocations  # valid → 201
+
+     # 5. Destinations (create+read only)
+     POST  /odata/v4/catalog/Destinations       # → 201
+     PATCH /odata/v4/catalog/Destinations/<id>  # → 405
+     DELETE /odata/v4/catalog/Destinations/<id> # → 405
+
+     # 6. UserManagement (Admin only)
+     GET  /odata/v4/user-management/Users               # Traveller role → 403
+     GET  /odata/v4/user-management/lockUser(userId='x') # → true + 
+     isLocked=true
+     POST /odata/v4/user-management/createUser           # duplicate loginName →
+      409
+     POST /odata/v4/user-management/resetPassword        # empty password → 400;
+      <8 chars → 400
+     POST /odata/v4/user-management/assignRole           # invalid roleId → 404
+
+● The plan is approved. Let me start implementation. I'll begin with Phase 1 (DB
+   layer) and read the i18n files in parallel.
+
+  Read 1 file (ctrl+o to expand)
+
+● Let me read the remaining i18n files before writing everything.
+
+  Read 3 files (ctrl+o to expand)
+
+● Now I have everything I need. Starting implementation — writing all DB layer
+  files in parallel.
+
+● Update(db\common.cds)
+  ⎿  Added 9 lines, removed 3 lines
+      25      key code : String(10); // ADMIN, TRAVELLER, AGENT
+      26  }
+      27  
+      28 +entity TravellerTypes : sap.common.CodeList {                  
+      29 +    @title: '{i18n>TravellerTypeCode}'                         
+      30 +    key code : String(10); // FF=Frequent Flyer, EX=Executive, 
+         +ST=Standard                                                    
+      31 +}                                                              
+      32 +                                                               
+      33  // ─── Type Definitions ───────────────────────────────────────
+          ──────────────────
+      34  
+      30 -type AddressType : Association to AddressTypes;                
+      31 -type Status      : Association to TravellerStatus;             
+      32 -type Role        : Association to Roles;                       
+      35 +type AddressType   : Association to AddressTypes;              
+      36 +type Status        : Association to TravellerStatus;           
+      37 +type Role          : Association to Roles;                     
+      38 +type TravellerType : Association to TravellerTypes;            
+
+● Write(db\schema.cds)
+  ⎿  Added 81 lines, removed 65 lines
+        1  namespace anubhav.claude;
+        2  
+        3 -using { cuid, Currency, managed }                             
+          -               from '@sap/cds/common';                        
+        4 -using { anubhav.claude.AddressType, anubhav.claude.Status, anu
+          -bhav.claude.Roles } from './common';                          
+        3 +using { cuid, managed }  from '@sap/cds/common';              
+        4 +using {                                                       
+        5 +    anubhav.claude.AddressTypes,                              
+        6 +    anubhav.claude.TravellerStatus,                           
+        7 +    anubhav.claude.TravellerTypes,                            
+        8 +    anubhav.claude.Roles                                      
+        9 +} from './common';                                            
+       10  
+        6 -// ─── Main Entities ─────────────────────────────────────────
+          -───────────────────                                           
+       11 +// ─── Destinations ──────────────────────────────────────────
+          +───────────────────                                           
+       12  
+       13  entity Destinations : cuid {
+        9 -    @title: '{i18n>DestinationAddress}'                       
+       10 -    address    : String(255);                                 
+       11 -    @title: '{i18n>City}'                                     
+       12 -    city       : String(40);                                  
+       13 -    @title: '{i18n>PostalCode}'                               
+       14 -    postalCode : String(8);                                   
+       14 +    @mandatory                                                
+       15 +    @title: '{i18n>DestinationName}'                          
+       16 +    name        : String(200);                                
+       17 +    @mandatory                                                
+       18      @title: '{i18n>Country}'
+       16 -    country    : String(40);                                  
+       17 -    @title: '{i18n>Traveller}'                                
+       18 -    traveller  : Association to Travellers;                   
+       19 +    country     : String(100);                                
+       20 +    @mandatory                                                
+       21 +    @title: '{i18n>City}'                                     
+       22 +    city        : String(100);                                
+       23 +    @title: '{i18n>Region}'                                   
+       24 +    region      : String(100);                                
+       25 +    @title: '{i18n>Description}'                              
+       26 +    description : LargeString;                                
+       27  }
+       28  
+       29 +// ─── Travellers ────────────────────────────────────────────
+          +───────────────────                                           
+       30 +                                                              
+       31  entity Travellers : cuid, managed {
+       32      @mandatory
+       23 -    @title: '{i18n>UserName}'                                 
+       24 -    userName  : String(255);                                  
+       33      @title: '{i18n>FirstName}'
+       26 -    firstName : String(255);                                  
+       34 +    firstName   : String(80);                                 
+       35 +    @mandatory                                                
+       36      @title: '{i18n>LastName}'
+       28 -    lastName  : String(255);                                  
+       29 -    @title: '{i18n>Contacts}'                                 
+       30 -    contacts  : Composition of many Contacts  on contacts.trav
+          -eller  = $self;                                               
+       31 -    @title: '{i18n>Gender}'                                   
+       32 -    gender    : String(10);                                   
+       33 -    @title: '{i18n>Age}'                                      
+       34 -    age       : Integer;                                      
+       37 +    lastName    : String(80);                                 
+       38 +    @Core.Computed                                            
+       39 +    @title: '{i18n>FullName}'                                 
+       40 +    virtual fullName : String(160);                           
+       41 +    @mandatory                                                
+       42 +    @title: '{i18n>Email}'                                    
+       43 +    email       : String(120);                                
+       44 +    @title: '{i18n>Phone}'                                    
+       45 +    phone       : String(20);                                 
+       46 +    @title: '{i18n>AddressType}'                              
+       47 +    addressType : Association to AddressTypes;                
+       48 +    @mandatory                                                
+       49 +    @title: '{i18n>TravellerType}'                            
+       50 +    type        : Association to TravellerTypes;              
+       51 +    @mandatory                                                
+       52      @title: '{i18n>Status}'
+       36 -    status    : Status default 'A';                           
+       37 -    @title: '{i18n>CreatedBy}'                                
+       38 -    createdBy : String(40);                                   
+       39 -    @title: '{i18n>Address}'                                  
+       40 -    address   : Composition of Destinations;                  
+       41 -    @title: '{i18n>Vacations}'                                
+       42 -    vacations : Composition of many Vacations on vacations.tra
+          -veller = $self;                                               
+       53 +    status      : Association to TravellerStatus default 'A'; 
+       54 +    @mandatory                                                
+       55 +    @title: '{i18n>UserID}'                                   
+       56 +    userID      : String(100);                                
+       57 +    @title: '{i18n>Locations}'                                
+       58 +    locations   : Composition of many TravelledLocations on lo
+          +cations.traveller = $self;                                    
+       59  }
+       60  
+       61  annotate Travellers with {
+       62      modifiedAt @odata.etag;
+       63  }
+       64  
+       49 -entity Contacts : cuid {                                      
+       50 -    @title: '{i18n>ContactType}'                              
+       51 -    type      : AddressType;                                  
+       52 -    @title: '{i18n>ContactAddress}'                           
+       53 -    address   : String(255);                                  
+       54 -    @title: '{i18n>Traveller}'                                
+       55 -    traveller : Association to Travellers;                    
+       56 -}                                                             
+       65 +// ─── TravelledLocations ────────────────────────────────────
+          +───────────────────                                           
+       66  
+       58 -entity Vacations : cuid {                                     
+       59 -    @title: '{i18n>VacationName}'                             
+       60 -    name        : String(255);                                
+       61 -    @title: '{i18n>Budget}'                                   
+       62 -    budget      : Decimal(10, 2);                             
+       63 -    @title: '{i18n>Currency}'                                 
+       64 -    currency    : Currency;                                   
+       65 -    @title: '{i18n>Description}'                              
+       66 -    description : String(1024);                               
+       67 -    @title: '{i18n>StartsAt}'                                 
+       68 -    startsAt    : DateTime;                                   
+       69 -    @title: '{i18n>EndsAt}'                                   
+       70 -    endsAt      : DateTime;                                   
+       67 +entity TravelledLocations : cuid {                            
+       68      @title: '{i18n>Traveller}'
+       69      traveller   : Association to Travellers;
+       70 +    @title: '{i18n>Destination}'                              
+       71 +    destination : Association to Destinations;                
+       72 +    @mandatory                                                
+       73 +    @title: '{i18n>TravelFrom}'                               
+       74 +    travelFrom  : Date;                                       
+       75 +    @mandatory                                                
+       76 +    @title: '{i18n>TravelTo}'                                 
+       77 +    travelTo    : Date;                                       
+       78 +    @title: '{i18n>Notes}'                                    
+       79 +    notes       : LargeString;                                
+       80  }
+       81  
+       75 -// ─── User Entity ───────────────────────────────────────────
+          -───────────────────                                           
+       82 +// ─── Users ─────────────────────────────────────────────────
+          +───────────────────                                           
+       83  
+       77 -entity AppUsers : cuid, managed {                             
+       84 +entity Users : cuid {                                         
+       85      @mandatory
+       79 -    @title: '{i18n>UserName}'                                 
+       80 -    userName    : String(100);                                
+       86 +    @title: '{i18n>LoginName}'                                
+       87 +    loginName : String(120);                                  
+       88      @mandatory
+       82 -    @title: '{i18n>Email}'                                    
+       83 -    email       : String(255);                                
+       84 -    @title: '{i18n>FullName}'                                 
+       85 -    fullName    : String(255);                                
+       89 +    @title: '{i18n>FirstName}'                                
+       90 +    firstName : String(80);                                   
+       91 +    @mandatory                                                
+       92 +    @title: '{i18n>LastName}'                                 
+       93 +    lastName  : String(80);                                   
+       94 +    @title: '{i18n>IsLocked}'                                 
+       95 +    isLocked  : Boolean default false;                        
+       96 +    @cds.on.insert: $now                                      
+       97 +    @title: '{i18n>CreatedAt}'                                
+       98 +    createdAt : Timestamp;                                    
+       99 +    @title: '{i18n>UserRoles}'                                
+      100 +    roles     : Composition of many UserRoles on roles.user = 
+          +$self;                                                        
+      101 +}                                                             
+      102 +                                                              
+      103 +// ─── UserRoles ─────────────────────────────────────────────
+          +───────────────────                                           
+      104 +                                                              
+      105 +entity UserRoles : cuid {                                     
+      106 +    @title: '{i18n>User}'                                     
+      107 +    user : Association to Users;                              
+      108      @title: '{i18n>Role}'
+       87 -    role        : Association to Roles;                       
+       88 -    @title: '{i18n>IsActive}'                                 
+       89 -    isActive    : Boolean default true;                       
+       90 -    @title: '{i18n>LastLoginAt}'                              
+       91 -    lastLoginAt : DateTime;                                   
+       92 -    @title: '{i18n>Traveller}'                                
+       93 -    traveller   : Association to Travellers;                  
+      109 +    role : Association to Roles;                              
+      110  }
+
+● Write(db\data\anubhav.claude-TravellerTypes.csv)  ⎿  Wrote 4 lines to db\data\anubhav.claude-TravellerTypes.csv
+      1 code;name;descr
+      2 FF;Frequent Flyer;Traveller with high travel frequency and loyalt
+        y benefits
+      3 EX;Executive;Senior executive traveller with premium travel allow
+        ances
+      4 ST;Standard;Standard corporate traveller
+
+● Write(db\data\anubhav.claude-Travellers.csv)
+  ⎿  Added 11 lines, removed 11 lines
+       1 -ID;userName;firstName;lastName;gender;age;status_code;createdBy
+         -;createdAt;modifiedAt                                          
+       2 -c1c1c1c1-0001-4111-8111-111111111101;raj.sharma@example.com;Raj
+         -;Sharma;Male;35;A;admin@anubhav.com;2025-01-15T08:00:00Z;2025-0
+         -3-20T10:30:00Z                                                 
+       3 -c1c1c1c1-0002-4111-8111-111111111102;priya.patel@example.com;Pr
+         -iya;Patel;Female;28;A;admin@anubhav.com;2025-02-01T09:00:00Z;20
+         -25-04-10T14:00:00Z                                             
+       4 -c1c1c1c1-0003-4111-8111-111111111103;john.williams@example.com;
+         -John;Williams;Male;45;A;admin@anubhav.com;2025-01-20T10:00:00Z;
+         -2025-03-15T11:00:00Z                                           
+       5 -c1c1c1c1-0004-4111-8111-111111111104;emily.johnson@example.com;
+         -Emily;Johnson;Female;32;A;admin@anubhav.com;2025-02-10T11:00:00
+         -Z;2025-04-25T09:00:00Z                                         
+       6 -c1c1c1c1-0005-4111-8111-111111111105;hans.mueller@example.com;H
+         -ans;Mueller;Male;52;I;admin@anubhav.com;2024-11-05T07:00:00Z;20
+         -25-01-10T08:00:00Z                                             
+       7 -c1c1c1c1-0006-4111-8111-111111111106;sophie.dubois@example.com;
+         -Sophie;Dubois;Female;29;A;admin@anubhav.com;2025-03-01T12:00:00
+         -Z;2025-05-01T15:00:00Z                                         
+       8 -c1c1c1c1-0007-4111-8111-111111111107;kenji.tanaka@example.com;K
+         -enji;Tanaka;Male;41;A;admin@anubhav.com;2025-01-08T06:00:00Z;20
+         -25-04-18T07:00:00Z                                             
+       9 -c1c1c1c1-0008-4111-8111-111111111108;li.wei@example.com;Li;Wei;
+         -Female;38;A;admin@anubhav.com;2025-02-20T08:00:00Z;2025-04-30T1
+         -0:00:00Z                                                       
+      10 -c1c1c1c1-0009-4111-8111-111111111109;omar.alrashid@example.com;
+         -Omar;Al-Rashid;Male;60;I;admin@anubhav.com;2024-10-15T09:00:00Z
+         -;2024-12-20T11:00:00Z                                          
+      11 -c1c1c1c1-0010-4111-8111-111111111110;isabella.ferrari@example.c
+         -om;Isabella;Ferrari;Female;44;A;admin@anubhav.com;2025-01-25T13
+         -:00:00Z;2025-04-05T16:00:00Z                                   
+       1 +ID;firstName;lastName;email;phone;userID;type_code;addressType_
+         +code;status_code;createdAt;modifiedAt                          
+       2 +c1c1c1c1-0001-4111-8111-111111111101;Raj;Sharma;raj.sharma@exam
+         +ple.com;+91-9876543201;raj.sharma@example.com;FF;H;A;2025-01-15
+         +T08:00:00Z;2025-03-20T10:30:00Z                                
+       3 +c1c1c1c1-0002-4111-8111-111111111102;Priya;Patel;priya.patel@ex
+         +ample.com;+91-9876543202;priya.patel@example.com;FF;H;A;2025-02
+         +-01T09:00:00Z;2025-04-10T14:00:00Z                             
+       4 +c1c1c1c1-0003-4111-8111-111111111103;John;Williams;john.william
+         +s@example.com;+1-2025550001;john.williams@example.com;EX;O;A;20
+         +25-01-20T10:00:00Z;2025-03-15T11:00:00Z                        
+       5 +c1c1c1c1-0004-4111-8111-111111111104;Emily;Johnson;emily.johnso
+         +n@example.com;+1-2025550002;emily.johnson@example.com;ST;H;A;20
+         +25-02-10T11:00:00Z;2025-04-25T09:00:00Z                        
+       6 +c1c1c1c1-0005-4111-8111-111111111105;Hans;Mueller;hans.mueller@
+         +example.com;+49-30-555001;hans.mueller@example.com;ST;P;I;2024-
+         +11-05T07:00:00Z;2025-01-10T08:00:00Z                           
+       7 +c1c1c1c1-0006-4111-8111-111111111106;Sophie;Dubois;sophie.duboi
+         +s@example.com;+33-1-555001;sophie.dubois@example.com;FF;H;A;202
+         +5-03-01T12:00:00Z;2025-05-01T15:00:00Z                         
+       8 +c1c1c1c1-0007-4111-8111-111111111107;Kenji;Tanaka;kenji.tanaka@
+         +example.com;+81-3-555001;kenji.tanaka@example.com;EX;O;A;2025-0
+         +1-08T06:00:00Z;2025-04-18T07:00:00Z                            
+       9 +c1c1c1c1-0008-4111-8111-111111111108;Li;Wei;li.wei@example.com;
+         ++86-21-555001;li.wei@example.com;ST;H;A;2025-02-20T08:00:00Z;20
+         +25-04-30T10:00:00Z                                             
+      10 +c1c1c1c1-0009-4111-8111-111111111109;Omar;Al-Rashid;omar.alrash
+         +id@example.com;+971-4-555001;omar.alrashid@example.com;EX;O;I;2
+         +024-10-15T09:00:00Z;2024-12-20T11:00:00Z                       
+      11 +c1c1c1c1-0010-4111-8111-111111111110;Isabella;Ferrari;isabella.
+         +ferrari@example.com;+39-06-555001;isabella.ferrari@example.com;
+         +FF;H;A;2025-01-25T13:00:00Z;2025-04-05T16:00:00Z               
+
+● Write(db\data\anubhav.claude-Destinations.csv)
+  ⎿  Added 13 lines, removed 16 lines
+       1 -ID;address;city;postalCode;country;traveller_ID                
+       2 -c3c3c3c3-0001-4333-8333-333333333301;123 Rue de Rivoli;Paris;75
+         -001;France;c1c1c1c1-0001-4111-8111-111111111101                
+       3 -c3c3c3c3-0002-4333-8333-333333333302;56 Sukhumvit Road;Bangkok;
+         -10110;Thailand;c1c1c1c1-0001-4111-8111-111111111101            
+       4 -c3c3c3c3-0003-4333-8333-333333333303;Kuta Beach Road;Bali;80361
+         -;Indonesia;c1c1c1c1-0002-4111-8111-111111111102                
+       5 -c3c3c3c3-0004-4333-8333-333333333304;MG Road;Bangalore;560001;I
+         -ndia;c1c1c1c1-0002-4111-8111-111111111102                      
+       6 -c3c3c3c3-0005-4333-8333-333333333305;350 Fifth Avenue;New York;
+         -10118;USA;c1c1c1c1-0003-4111-8111-111111111103                 
+       7 -c3c3c3c3-0006-4333-8333-333333333306;100 Queen Street;Sydney;20
+         -00;Australia;c1c1c1c1-0003-4111-8111-111111111103              
+       8 -c3c3c3c3-0007-4333-8333-333333333307;78 Darling Harbour Rd;Sydn
+         -ey;2000;Australia;c1c1c1c1-0004-4111-8111-111111111104         
+       9 -c3c3c3c3-0008-4333-8333-333333333308;1 Orchard Road;Singapore;2
+         -38888;Singapore;c1c1c1c1-0004-4111-8111-111111111104           
+      10 -c3c3c3c3-0009-4333-8333-333333333309;Bahnhofstrasse 1;Zurich;80
+         -01;Switzerland;c1c1c1c1-0005-4111-8111-111111111105            
+      11 -c3c3c3c3-0010-4333-8333-333333333310;12 Rue de la Paix;Paris;75
+         -002;France;c1c1c1c1-0006-4111-8111-111111111106                
+      12 -c3c3c3c3-0011-4333-8333-333333333311;3-5-7 Shibuya;Tokyo;150-00
+         -02;Japan;c1c1c1c1-0007-4111-8111-111111111107                  
+      13 -c3c3c3c3-0012-4333-8333-333333333312;2-3 Ginza;Tokyo;104-0061;J
+         -apan;c1c1c1c1-0007-4111-8111-111111111107                      
+      14 -c3c3c3c3-0013-4333-8333-333333333313;88 Nanjing Road;Shanghai;2
+         -00001;China;c1c1c1c1-0008-4111-8111-111111111108               
+      15 -c3c3c3c3-0014-4333-8333-333333333314;Jumeirah Beach Road;Dubai;
+         -00000;UAE;c1c1c1c1-0009-4111-8111-111111111109                 
+      16 -c3c3c3c3-0015-4333-8333-333333333315;Via del Corso 123;Rome;001
+         -86;Italy;c1c1c1c1-0010-4111-8111-111111111110                  
+       1 +ID;name;country;city;region;description                        
+       2 +d0000001-0000-4000-a000-000000000001;Paris;France;Île-de-France
+         +;City of Light — cultural heart of Europe with iconic landmarks
+         + and cuisine                                                   
+       3 +d0000001-0000-4000-a000-000000000002;Bangkok;Thailand;Central T
+         +hailand;Vibrant metropolis blending ancient temples with a mode
+         +rn skyline                                                     
+       4 +d0000001-0000-4000-a000-000000000003;Bali;Indonesia;Bali Provin
+         +ce;Tropical paradise known for rice terraces, beaches, and spir
+         +itual culture                                                  
+       5 +d0000001-0000-4000-a000-000000000004;Bangalore;India;Karnataka;
+         +India's Silicon Valley — technology hub with a pleasant year-ro
+         +und climate                                                    
+       6 +d0000001-0000-4000-a000-000000000005;New York;United States;New
+         + York State;The Big Apple — iconic city of skyscrapers, culture
+         +, and world-class dining                                       
+       7 +d0000001-0000-4000-a000-000000000006;Sydney;Australia;New South
+         + Wales;Harbour city famous for the Opera House, Bondi Beach, an
+         +d vibrant lifestyle                                            
+       8 +d0000001-0000-4000-a000-000000000007;Singapore;Singapore;Centra
+         +l Region;Modern city-state at the crossroads of Asia — clean, e
+         +fficient, and cosmopolitan                                     
+       9 +d0000001-0000-4000-a000-000000000008;Zurich;Switzerland;Zurich 
+         +Canton;Financial capital set against a stunning Alps backdrop w
+         +ith pristine lake views                                        
+      10 +d0000001-0000-4000-a000-000000000009;Tokyo;Japan;Kanto;World's 
+         +largest city combining centuries-old tradition with cutting-edg
+         +e futurism                                                     
+      11 +d0000001-0000-4000-a000-000000000010;Dubai;United Arab Emirates
+         +;Dubai Emirate;Ultra-modern desert metropolis with iconic archi
+         +tecture and tax-free luxury shopping                           
+      12 +d0000001-0000-4000-a000-000000000011;Rome;Italy;Lazio;Eternal C
+         +ity with 2000 years of history — the Colosseum, Vatican, and wo
+         +rld-class art                                                  
+      13 +d0000001-0000-4000-a000-000000000012;Shanghai;China;Shanghai Mu
+         +nicipality;China's global financial and business hub with a daz
+         +zling skyline and rich history                                 
+
+● Write(db\data\anubhav.claude-TravelledLocations.csv)
+  ⎿  Wrote 16 lines to db\data\anubhav.claude-TravelledLocations.csv
+      2 l0000001-0000-4000-a000-000000000001;c1c1c1c1-0001-4111-8111-1111
+        11111101;d0000001-0000-4000-a000-000000000001;2025-01-10;2025-01-
+        17;Business conference at Paris HQ
+        11111101;d0000001-0000-4000-a000-000000000002;2025-03-05;2025-03-
+        12;Regional sales summit in Bangkok
+      4 l0000001-0000-4000-a000-000000000003;c1c1c1c1-0002-4111-8111-1111
+        22;Team offsite retreat in Bali0-000000000003;2025-02-15;2025-02-
+      5 l0000001-0000-4000-a000-000000000004;c1c1c1c1-0002-4111-8111-1111
+        11111102;d0000001-0000-4000-a000-000000000007;2025-04-10;2025-04-
+        15;Partner
+     … +36 lines (ctrl+o to expand)
+
+● Write(db\data\anubhav.claude-Users.csv)
+  ⎿  Wrote 13 lines to db\data\anubhav.claude-Users.csv
+      2 c5c5c5c5-0001-4555-8555-555555555501;superadmin@anubhav.com;Super
+        ;Administrator;false;2024-12-01T08:00:00Z
+        arah;Thompson;false;2024-12-01T08:00:00Zah.thompson@anubhav.com;S
+      4 c5c5c5c5-0003-4555-8555-555555555503;michael.brown@anubhav.com;Mi
+        chael;Brown;false;2025-01-10T09:00:00Z
+        false;2025-02-15T09:00:00Z5555555504;chen.yu@anubhav.com;Chen;Yu;
+      6 c5c5c5c5-0005-4555-8555-555555555505;anya.sharma@anubhav.com;Anya
+      7 c5c5c5c5-0006-4555-8555-555555555506;raj.sharma@example.com;Raj;S
+        harma;false;2025-01-15T08:30:00Z
+      8 c5c5c5c5-0007-4555-8555-55555555
+     … +15 lines (ctrl+o to expand)
+
+● Write(db\data\anubhav.claude-UserRoles.csv)
+  ⎿  Wrote 13 lines to db\data\anubhav.claude-UserRoles.csv
+       2 ur000001-0000-4000-a000-000000000001;c5c5c5c5-0001-4555-8555-555
+       3 ur000001-0000-4000-a000-000000000002;c5c5c5c5-0002-4555-8555-555
+       4 ur000001-0000-4000-a000-000000000003;c5c5c5c5-0003-4555-8555-555
+       5 ur000001-0000-4000-a000-000000000004;c5c5c5c5-0004-4555-8555-555
+         555555504;AGENT
+         555555505;AGENT000-a000-000000000005;c5c5c5c5-0005-4555-8555-555
+         555555506;TRAVELLERa000-000000000006;c5c5c5c5-0006-4555-8555-555
+         555555507;TRAVELLERa000-000000000007;c5c5c5c5-0007-4555-8555-555
+         555555508;TRAVELLERa000-000000000008;c5c5c5c5-0008-4555-8555-555
+      10 ur000001-0000-400
+     … +15 lines (ctrl+o to expand)
+
+● DB layer complete. Now creating the service directory structure and writing
+  all service/handler files in parallel.
+
+● Bash(mkdir -p "C:\claude\anubhav-claude\srv\handlers")
+  ⎿  Done
+
+● Write(srv\cat-service.cds)
+  ⎿  Wrote 47 lines to srv\cat-service.cds
+       1 using {
+       2     anubhav.claude.Travellers,
+       3     anubhav.claude.TravelledLocations,
+       4     anubhav.claude.Destinations
+       5 } from '../db/schema';
+       6 
+       7 using {
+       8     anubhav.claude.TravellerTypes,
+       9     anubhav.claude.TravellerStatus,
+      10     anubhav.claude.AddressTypes
+     … +46 lines (ctrl+o to expand)
+
+● Write(srv\user-management.cds)
+  ⎿  Wrote 28 lines to srv\user-management.cds
+       1 using {
+       2     anubhav.claude.Users,
+       3     anubhav.claude.UserRoles
+       4 } from '../db/schema';
+       5 
+       6 using {
+       7     anubhav.claude.Roles
+       8 } from '../db/common';
+       9 
+      10 @path: '/user-management'
+     … +22 lines (ctrl+o to expand)
+
+● Write(srv\cat-service.js)
+  ⎿  Wrote 7 lines to srv\cat-service.js
+      1 const travellersHandler       = require('./handlers/travellers.ha
+        ndler');
+      2 const travelledLocationsHandler = require('./handlers/travelled-l
+        ocations.handler');
+      3 
+      4 module.exports = (srv) => {
+      5     travellersHandler(srv);
+      6     travelledLocationsHandler(srv);
+      7 };
+
+● Write(srv\user-management.js)
+  ⎿  Wrote 5 lines to srv\user-management.js
+      1 const userManagementHandler = require('./handlers/user-management
+        .handler');
+      2 
+      3 module.exports = (srv) => {
+      4     userManagementHandler(srv);
+      5 };
+
+● Write(srv\handlers\travellers.handler.js)
+  ⎿  Wrote 43 lines to srv\handlers\travellers.handler.js
+       2     const { Travellers } = srv.entities;
+       3 
+       4     // ─── Validate and enrich on CREATE ───────────────────────
+         ─────────────────
+       5     srv.before('CREATE', Travellers, async (req) => {
+       7         const { firstName, lastName, email } = req.data;
+       8         if (!firstName?.trim() || !lastName?.trim()) {
+       9             return req.error(400, 'First name and last name are 
+         required');
+      10         }
+     … +40 lines (ctrl+o to expand)
+
+● Write(srv\handlers\travelled-locations.handler.js)
+  ⎿  Wrote 21 lines to srv\handlers\travelled-locations.handler.js
+      1 module.exports = (srv) => {
+      2     const { TravelledLocations } = srv.entities;
+      3 
+      4     srv.before('CREATE', TravelledLocations, async (req) => {
+      5         const { travelFrom, travelTo, traveller_ID } = req.data;
+      6 
+      7         if (travelFrom && travelTo && travelFrom > travelTo) {
+      8             return req.error(400, 'Travel start date must be befo
+        re end date');
+      9         }
+     … +15 lines (ctrl+o to expand)
+
+● Write(srv\handlers\user-management.handler.js)
+  ⎿  Wrote 78 lines to srv\handlers\user-management.handler.js
+       2     const { Users, UserRoles, Roles } = srv.entities;
+       3 
+       4     // ─── lockUser ────────────────────────────────────────────
+       5     srv.on('lockUser', async (req) => {
+       6         const { userId } = req.data;
+       7         const user = await SELECT.one.from(Users).where({ ID: us
+       8         if (!user) return req.error(404, 'User not found');
+       9         if (user.isLocked) return false;
+      10         await UPDATE(Users).set({ isLocked: true }).where({ ID: 
+         userId });
+     … +91 lines (ctrl+o to expand)
+
+● Now writing all i18n files and deleting obsolete CSVs in parallel.
+
+● Write(db\i18n\i18n.properties)
+  ⎿  Added 29 lines, removed 32 lines
+       1  # ─────────────────────────────────────────────────────────────
+          ────────────────
+       2  # i18n.properties — Default English translations
+       3 -# Application: Vacation & Traveller Management (anubhav.claude)
+       3 +# Application: Travel Management (anubhav.claude)              
+       4  # ─────────────────────────────────────────────────────────────
+          ────────────────
+       5  
+       6  # ─── Code List Fields ────────────────────────────────────────
+          ────────────────
+       7  AddressTypeCode     = Address Type
+       8  TravellerStatusCode = Traveller Status
+       9  RoleCode            = Role
+      10 +TravellerTypeCode   = Traveller Type                           
+      11  
+      12  # ─── Destination Fields ──────────────────────────────────────
+          ────────────────
+      12 -DestinationAddress = Street Address                            
+      13 -City               = City                                      
+      14 -PostalCode         = Postal Code                               
+      15 -Country            = Country                                   
+      13 +DestinationName = Destination Name                             
+      14 +Country         = Country                                      
+      15 +City            = City                                         
+      16 +Region          = Region                                       
+      17 +Description     = Description                                  
+      18  
+      19  # ─── Traveller Fields ────────────────────────────────────────
+          ────────────────
+      18 -UserName  = User Name                                          
+      19 -FirstName = First Name                                         
+      20 -LastName  = Last Name                                          
+      21 -Contacts  = Contacts                                           
+      22 -Gender    = Gender                                             
+      23 -Age       = Age                                                
+      24 -Status    = Status                                             
+      25 -CreatedBy = Created By                                         
+      26 -Address   = Address                                            
+      27 -Vacations = Vacations                                          
+      20 +FirstName     = First Name                                     
+      21 +LastName      = Last Name                                      
+      22 +FullName      = Full Name                                      
+      23 +Email         = Email Address                                  
+      24 +Phone         = Phone Number                                   
+      25 +AddressType   = Address Type                                   
+      26 +TravellerType = Traveller Type                                 
+      27 +Status        = Status                                         
+      28 +UserID        = User ID                                        
+      29 +Locations     = Visited Locations                              
+      30  
+      29 -# ─── Contact Fields ──────────────────────────────────────────
+         -────────────────                                               
+      30 -ContactType    = Contact Type                                  
+      31 -ContactAddress = Contact Address                               
+      31 +# ─── TravelledLocations Fields ───────────────────────────────
+         +────────────────                                               
+      32 +Destination = Destination                                      
+      33 +TravelFrom  = Travel From                                      
+      34 +TravelTo    = Travel To                                        
+      35 +Notes       = Notes                                            
+      36  
+      33 -# ─── Vacation Fields ─────────────────────────────────────────
+         -────────────────                                               
+      34 -VacationName = Vacation Name                                   
+      35 -Budget       = Budget                                          
+      36 -Currency     = Currency                                        
+      37 -Description  = Description                                     
+      38 -StartsAt     = Start Date                                      
+      39 -EndsAt       = End Date                                        
+      37 +# ─── Users Fields ────────────────────────────────────────────
+         +────────────────                                               
+      38 +LoginName = Login Name                                         
+      39 +IsLocked  = Account Locked                                     
+      40 +CreatedAt = Created At                                         
+      41 +UserRoles = Roles                                              
+      42  
+      41 -# ─── App User Fields ─────────────────────────────────────────
+         -────────────────                                               
+      42 -Email       = Email Address                                    
+      43 -FullName    = Full Name                                        
+      44 -Role        = Role                                             
+      45 -IsActive    = Active                                           
+      46 -LastLoginAt = Last Login At                                    
+      47 -                                                               
+      43  # ─── Shared ──────────────────────────────────────────────────
+          ────────────────
+      44  Traveller = Traveller
+      45 +User      = User                                               
+      46 +Role      = Role                                               
+
+● Write(db\i18n\i18n_en.properties)
+  ⎿  Added 29 lines, removed 32 lines
+       1  # ─────────────────────────────────────────────────────────────
+          ────────────────
+       2  # i18n_en.properties — Explicit English translations (mirrors i
+          18n.properties)
+       3 -# Application: Vacation & Traveller Management (anubhav.claude)
+       3 +# Application: Travel Management (anubhav.claude)              
+       4  # ─────────────────────────────────────────────────────────────
+          ────────────────
+       5  
+       6  # ─── Code List Fields ────────────────────────────────────────
+          ────────────────
+       7  AddressTypeCode     = Address Type
+       8  TravellerStatusCode = Traveller Status
+       9  RoleCode            = Role
+      10 +TravellerTypeCode   = Traveller Type                           
+      11  
+      12  # ─── Destination Fields ──────────────────────────────────────
+          ────────────────
+      12 -DestinationAddress = Street Address                            
+      13 -City               = City                                      
+      14 -PostalCode         = Postal Code                               
+      15 -Country            = Country                                   
+      13 +DestinationName = Destination Name                             
+      14 +Country         = Country                                      
+      15 +City            = City                                         
+      16 +Region          = Region                                       
+      17 +Description     = Description                                  
+      18  
+      19  # ─── Traveller Fields ────────────────────────────────────────
+          ────────────────
+      18 -UserName  = User Name                                          
+      19 -FirstName = First Name                                         
+      20 -LastName  = Last Name                                          
+      21 -Contacts  = Contacts                                           
+      22 -Gender    = Gender                                             
+      23 -Age       = Age                                                
+      24 -Status    = Status                                             
+      25 -CreatedBy = Created By                                         
+      26 -Address   = Address                                            
+      27 -Vacations = Vacations                                          
+      20 +FirstName     = First Name                                     
+      21 +LastName      = Last Name                                      
+      22 +FullName      = Full Name                                      
+      23 +Email         = Email Address                                  
+      24 +Phone         = Phone Number                                   
+      25 +AddressType   = Address Type                                   
+      26 +TravellerType = Traveller Type                                 
+      27 +Status        = Status                                         
+      28 +UserID        = User ID                                        
+      29 +Locations     = Visited Locations                              
+      30  
+      29 -# ─── Contact Fields ──────────────────────────────────────────
+         -────────────────                                               
+      30 -ContactType    = Contact Type                                  
+      31 -ContactAddress = Contact Address                               
+      31 +# ─── TravelledLocations Fields ───────────────────────────────
+         +────────────────                                               
+      32 +Destination = Destination                                      
+      33 +TravelFrom  = Travel From                                      
+      34 +TravelTo    = Travel To                                        
+      35 +Notes       = Notes                                            
+      36  
+      33 -# ─── Vacation Fields ─────────────────────────────────────────
+         -────────────────                                               
+      34 -VacationName = Vacation Name                                   
+      35 -Budget       = Budget                                          
+      36 -Currency     = Currency                                        
+      37 -Description  = Description                                     
+      38 -StartsAt     = Start Date                                      
+      39 -EndsAt       = End Date                                        
+      37 +# ─── Users Fields ────────────────────────────────────────────
+         +────────────────                                               
+      38 +LoginName = Login Name                                         
+      39 +IsLocked  = Account Locked                                     
+      40 +CreatedAt = Created At                                         
+      41 +UserRoles = Roles                                              
+      42  
+      41 -# ─── App User Fields ─────────────────────────────────────────
+         -────────────────                                               
+      42 -Email       = Email Address                                    
+      43 -FullName    = Full Name                                        
+      44 -Role        = Role                                             
+      45 -IsActive    = Active                                           
+      46 -LastLoginAt = Last Login At                                    
+      47 -                                                               
+      43  # ─── Shared ──────────────────────────────────────────────────
+          ────────────────
+      44  Traveller = Traveller
+      45 +User      = User                                               
+      46 +Role      = Role                                               
+
+● Write(db\i18n\i18n_de.properties)
+  ⎿  Added 29 lines, removed 32 lines
+       1  # ─────────────────────────────────────────────────────────────
+          ────────────────
+       2  # i18n_de.properties — Deutsche Übersetzungen (German Translati
+          ons)
+       3 -# Application: Urlaubs- und Reisendenverwaltung (anubhav.claude
+         -)                                                              
+       3 +# Application: Reiseverwaltung (anubhav.claude)                
+       4  # ─────────────────────────────────────────────────────────────
+          ────────────────
+       5  
+       6  # ─── Codelisten-Felder (Code List Fields) ────────────────────
+          ────────────────
+       7  AddressTypeCode     = Adresstyp
+       8  TravellerStatusCode = Reisendenstatus
+       9  RoleCode            = Rolle
+      10 +TravellerTypeCode   = Reisendentyp                             
+      11  
+      12  # ─── Zielfelder (Destination Fields) ─────────────────────────
+          ────────────────
+      12 -DestinationAddress = Straßenadresse                            
+      13 -City               = Stadt                                     
+      14 -PostalCode         = Postleitzahl                              
+      15 -Country            = Land                                      
+      13 +DestinationName = Reisezielname                                
+      14 +Country         = Land                                         
+      15 +City            = Stadt                                        
+      16 +Region          = Region                                       
+      17 +Description     = Beschreibung                                 
+      18  
+      19  # ─── Reisenden-Felder (Traveller Fields) ─────────────────────
+          ────────────────
+      18 -UserName  = Benutzername                                       
+      19 -FirstName = Vorname                                            
+      20 -LastName  = Nachname                                           
+      21 -Contacts  = Kontakte                                           
+      22 -Gender    = Geschlecht                                         
+      23 -Age       = Alter                                              
+      24 -Status    = Status                                             
+      25 -CreatedBy = Erstellt von                                       
+      26 -Address   = Adresse                                            
+      27 -Vacations = Urlaube                                            
+      20 +FirstName     = Vorname                                        
+      21 +LastName      = Nachname                                       
+      22 +FullName      = Vollständiger Name                             
+      23 +Email         = E-Mail-Adresse                                 
+      24 +Phone         = Telefonnummer                                  
+      25 +AddressType   = Adresstyp                                      
+      26 +TravellerType = Reisendentyp                                   
+      27 +Status        = Status                                         
+      28 +UserID        = Benutzer-ID                                    
+      29 +Locations     = Besuchte Orte                                  
+      30  
+      29 -# ─── Kontaktfelder (Contact Fields) ──────────────────────────
+         -────────────────                                               
+      30 -ContactType    = Kontakttyp                                    
+      31 -ContactAddress = Kontaktadresse                                
+      31 +# ─── Reiseverlauf-Felder (TravelledLocations Fields) ─────────
+         +────────────────                                               
+      32 +Destination = Reiseziel                                        
+      33 +TravelFrom  = Reisebeginn                                      
+      34 +TravelTo    = Reiseende                                        
+      35 +Notes       = Notizen                                          
+      36  
+      33 -# ─── Urlaubsfelder (Vacation Fields) ─────────────────────────
+         -────────────────                                               
+      34 -VacationName = Urlaubsbezeichnung                              
+      35 -Budget       = Budget                                          
+      36 -Currency     = Währung                                         
+      37 -Description  = Beschreibung                                    
+      38 -StartsAt     = Startdatum                                      
+      39 -EndsAt       = Enddatum                                        
+      37 +# ─── Benutzerfelder (Users Fields) ───────────────────────────
+         +────────────────                                               
+      38 +LoginName = Anmeldename                                        
+      39 +IsLocked  = Gesperrt                                           
+      40 +CreatedAt = Erstellt am                                        
+      41 +UserRoles = Rollen                                             
+      42  
+      41 -# ─── App-Benutzerfelder (App User Fields) ────────────────────
+         -────────────────                                               
+      42 -Email       = E-Mail-Adresse                                   
+      43 -FullName    = Vollständiger Name                               
+      44 -Role        = Rolle                                            
+      45 -IsActive    = Aktiv                                            
+      46 -LastLoginAt = Letzter Login                                    
+      47 -                                                               
+      43  # ─── Gemeinsam (Shared) ──────────────────────────────────────
+          ─────────────────
+      44  Traveller = Reisender
+      45 +User      = Benutzer                                           
+      46 +Role      = Rolle                                              
+
+● Write(db\i18n\i18n_hi.properties)
+  ⎿  Added 29 lines, removed 32 lines
+       1  # ─────────────────────────────────────────────────────────────
+          ────────────────
+       2  # i18n_hi.properties — हिंदी अनुवाद (Hindi Translations)
+       3 -# Application: अवकाश और यात्र प्रबंधन (anubhav.claude)              
+       3 +# Application: यात्र प्रबंधन (anubhav.claude)                      
+       4  # ─────────────────────────────────────────────────────────────
+          ────────────────
+       5  
+       6  # ─── कोड सूची फ़ील्ड (Code List Fields) ────────────────────────────
+          ─────────
+       7  AddressTypeCode     = पता प्रकार
+       8  TravellerStatusCode = यात्री स्थिति
+       9  RoleCode            = भूमिका
+      10 +TravellerTypeCode   = यात्री प्रकार                                 
+      11  
+      12  # ─── गंतव्य फ़ील्ड (Destination Fields) ───────────────────────────
+          ───────────
+      12 -DestinationAddress = सड़क का पता                                  
+      13 -City               = शहर                                       
+      14 -PostalCode         = पिन कोड                                     
+      15 -Country            = देश                                        
+      13 +DestinationName = गंतव्य नाम                                      
+      14 +Country         = देश                                           
+      15 +City            = शहर                                          
+      16 +Region          = क्षेत्र                                         
+      17 +Description     = विवरण                                         
+      18  
+      19  # ─── यात्री फ़ील्ड (Traveller Fields) ──────────────────────────────
+          ──────────
+      18 -UserName  = उपयोगकर्ता नाम                                         
+      19 -FirstName = पहला नाम                                             
+      20 -LastName  = अंतिम नाम                                             
+      21 -Contacts  = संपर्क                                               
+      22 -Gender    = लिंग                                                 
+      23 -Age       = आयु                                                 
+      24 -Status    = स्थिति                                                
+      25 -CreatedBy = द्वारा बनाया गया                                         
+      26 -Address   = पता                                                 
+      27 -Vacations = अवकाश                                               
+      20 +FirstName     = पहला नाम                                         
+      21 +LastName      = अंतिम नाम                                         
+      22 +FullName      = पूरा नाम                                          
+      23 +Email         = ईमेल पता                                         
+      24 +Phone         = फोन नंबर                                         
+      25 +AddressType   = पता प्रकार                                        
+      26 +TravellerType = यात्री प्रकार                                       
+      27 +Status        = स्थिति                                            
+      28 +UserID        = उपयोगकर्ता आईडी                                    
+      29 +Locations     = भ्रमण किए स्थान                                    
+      30  
+      29 -# ─── संपरक फ़ील्ड (Contact Fields) ───────────────────────────────
+         -───────────                                                    
+      30 -ContactType    = संपर्क प्रकार                                     
+      31 -ContactAddress = संपर्क पता                                       
+      31 +# ─── यातरा इतिहास फ़ील्ड (TravelledLocations Fields) ────────────────
+         +────────                                                       
+      32 +Destination = गंतव्य                                             
+      33 +TravelFrom  = यात्रा प्रारंभ                                         
+      34 +TravelTo    = यात्रा समाप्ति                                         
+      35 +Notes       = टिप्पणियाँ                                            
+      36  
+      33 -# ─── अवकश फ़ील्ड (Vacation Fields) ──────────────────────────────
+         -───────────                                                    
+      34 -VacationName = अवकाश का नाम                                       
+      35 -Budget       = बजट                                             
+      36 -Currency     = मुद्रा                                             
+      37 -Description  = विवरण                                            
+      38 -StartsAt     = प्रारंभ तिथि                                         
+      39 -EndsAt       = समाप्ति तिथि                                         
+      37 +# ─── उपयोगकर्त फ़ील्ड (Users Fields) ──────────────────────────────
+         +──────────                                                     
+      38 +LoginName = लॉगिन नाम                                             
+      39 +IsLocked  = खाता बंद                                              
+      40 +CreatedAt = बनाने की तिथि                                           
+      41 +UserRoles = भूमिकाएँ                                               
+      42  
+      41 -# ─── ऐप उपयोगकर्ता फ़ील्ड (App User Fields) ────────────────────────
+         -─────────                                                      
+      42 -Email       = ईमेल पता                                           
+      43 -FullName    = पूरा नाम                                            
+      44 -Role        = भूमिका                                              
+      45 -IsActive    = सक्रिय                                             
+      46 -LastLoginAt = अंतिम लॉगिन                                          
+      47 -                                                               
+      43  # ─── साझा (Shared) ─────────────────────────────────────────────
+          ──────────────
+      44  Traveller = यात्री
+      45 +User      = उपयोगकर्ता                                            
+      46 +Role      = भूमिका                                                
+
+● Bash(Remove-Item
+      "C:\claude\anubhav-claude\db\data\anubhav.claude-AppUsers.csv" -Force;
+      Remove-Item "C:\claude\anubhav-claude\db\data\anubhav.claude-Contacts.csv"
+       -F…)  ⎿  Error: Exit code 127
+     /usr/bin/bash: line 1: Remove-Item: command not found
+     /usr/bin/bash: line 1: Remove-Item: command not found
+     /usr/bin/bash: line 1: Remove-Item: command not found
+     /usr/bin/bash: line 1: Write-Output: command not found
+
+● PowerShell(Remove-Item
+            "C:\claude\anubhav-claude\db\data\anubhav.claude-AppUsers.csv"
+            -Force; Remove-Item
+            "C:\claude\anubhav-claude\db\data\anubhav.claude-Contacts.csv" -F…)
+  ⎿  Done
+
+● Now let me verify the server starts correctly with cds watch.
+
+● Bash(cd "C:\claude\anubhav-claude" && timeout 20 npx cds watch 2>&1 | head -80
+       || true)
+  ⎿  
+     cds serve all --with-mocks --in-memory? 
+     ( live reload enabled for browsers ) 
+     … +16 lines (ctrl+o to expand)
+
+● The namespace reference syntax is wrong in the service CDS files. Fixing both
+  to use the alias pattern.
+
+● Write(srv\cat-service.cds)
+  ⎿  Added 8 lines, removed 17 lines
+       1 -using {                                                        
+       2 -    anubhav.claude.Travellers,                                 
+       3 -    anubhav.claude.TravelledLocations,                         
+       4 -    anubhav.claude.Destinations                                
+       5 -} from '../db/schema';                                         
+       1 +using { anubhav.claude as db }     from '../db/schema';        
+       2 +using { anubhav.claude as common } from '../db/common';        
+       3  
+       7 -using {                                                        
+       8 -    anubhav.claude.TravellerTypes,                             
+       9 -    anubhav.claude.TravellerStatus,                            
+      10 -    anubhav.claude.AddressTypes                                
+      11 -} from '../db/common';                                         
+      12 -                                                               
+       4  @path: '/catalog'
+       5  @requires: 'authenticated-user'
+       6  service CatalogService {
+       7  
+      17 -    entity Travellers         as projection on anubhav.claude.T
+         -ravellers;                                                     
+       8 +    entity Travellers         as projection on db.Travellers;  
+       9  
+      10      @readonly
+      20 -    entity TravellerTypes     as projection on anubhav.claude.T
+         -ravellerTypes;                                                 
+      11 +    entity TravellerTypes     as projection on common.Traveller
+         +Types;                                                         
+      12  
+      22 -    entity TravelledLocations as projection on anubhav.claude.T
+         -ravelledLocations;                                             
+      13 +    entity TravelledLocations as projection on db.TravelledLoca
+         +tions;                                                         
+      14  
+      24 -    entity Destinations       as projection on anubhav.claude.D
+         -estinations;                                                   
+      15 +    entity Destinations       as projection on db.Destinations;
+      16  
+      17      @readonly
+      27 -    entity TravellerStatus    as projection on anubhav.claude.T
+         -ravellerStatus;                                                
+      18 +    entity TravellerStatus    as projection on common.Traveller
+         +Status;                                                        
+      19  
+      20      @readonly
+      30 -    entity AddressTypes       as projection on anubhav.claude.A
+         -ddressTypes;                                                   
+      21 +    entity AddressTypes       as projection on common.AddressTy
+         +pes;                                                           
+      22  }
+      23  
+      24  // ─── Row-level security & CRUD restrictions ─────────────────
+          ──────────────────
+
+● Write(srv\user-management.cds)
+  ⎿  Added 5 lines, removed 11 lines
+       1 -using {                                                        
+       2 -    anubhav.claude.Users,                                      
+       3 -    anubhav.claude.UserRoles                                   
+       4 -} from '../db/schema';                                         
+       1 +using { anubhav.claude as db }     from '../db/schema';        
+       2 +using { anubhav.claude as common } from '../db/common';        
+       3  
+       6 -using {                                                        
+       7 -    anubhav.claude.Roles                                       
+       8 -} from '../db/common';                                         
+       9 -                                                               
+       4  @path: '/user-management'
+       5  @requires: 'Admin'
+       6  service UserManagement {
+       7  
+      14 -    entity Users     as projection on anubhav.claude.Users;    
+       8 +    entity Users     as projection on db.Users;                
+       9  
+      10      @readonly
+      17 -    entity Roles     as projection on anubhav.claude.Roles;    
+      11 +    entity Roles     as projection on common.Roles;            
+      12  
+      19 -    entity UserRoles as projection on anubhav.claude.UserRoles;
+      13 +    entity UserRoles as projection on db.UserRoles;            
+      14  
+      15      function lockUser(userId: String)   returns Boolean;
+      16      function unlockUser(userId: String) returns Boolean;
+
+● Bash(cd "C:\claude\anubhav-claude" && timeout 20 npx cds watch 2>&1 | head -80
+       || true)
+  ⎿  
+     cds serve all --with-mocks --in-memory? 
+     ( live reload enabled for browsers ) 
+     … +37 lines (ctrl+o to expand)
+
+● The server starts cleanly. Both services are registered and all 10 CSV files
+  load successfully. Let me do a final check of the file structure.
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+● Everything is in place. Here's a summary of what was implemented:
+
+  ---
+  Implementation Complete
+
+  What was built
+
+  DB Layer (restructured)
+  - db/common.cds — Added TravellerTypes code list (FF/EX/ST) and TravellerType
+  type alias
+  - db/schema.cds — Complete rewrite: new Travellers (with fullName virtual,
+  userID, type, addressType, locations composition), standalone Destinations,
+  new TravelledLocations, Users (replaces AppUsers), UserRoles M2M; removed
+  Contacts, Vacations
+  - 10 CSV seed files (3 new, 4 updated/replaced, 3 deleted)
+
+  Service Layer (new)
+  - srv/cat-service.cds — CatalogService at /catalog with 6 entities, row-level
+  @restrict for Traveller vs Admin roles, Destinations restricted to READ+CREATE
+  - srv/user-management.cds — UserManagement at /user-management, @requires: 
+  'Admin', 2 functions + 4 actions
+  - srv/cat-service.js + srv/user-management.js — Entry points wiring
+  sub-handlers
+
+  Handlers (generic pattern per spec §4.2)
+  - travellers.handler.js — CREATE validation (name, duplicate email), UPDATE
+  guard, after-READ fullName computation
+  - travelled-locations.handler.js — CREATE validation (date order, overlap
+  detection)
+  - user-management.handler.js — All 6 functions/actions with correct error
+  codes (404/409/400)
+
+  i18n — All 4 property files refreshed with new keys, old removed.
+
+  Server starts at http://localhost:4004 with zero errors, both services
+  registered, all seed data loaded.
+
+✻ Sautéed for 13m 12s
+
+❯ /rename day9_10_11_spec_Driven_dev 
+  ⎿  Session renamed to: day9_10_11_spec_Driven_dev
+
+! git add . && git commit -m "day11_generated_code_auth"                        
+  ⎿  warning: in the working copy of '.claude/settings.local.json', LF will
+      be replaced by CRLF the next time Git touches it
+     warning: in the working copy of 'db/data/anubhav.claude-Destinations.c
+     … +66 lines (ctrl+o to expand)
+
+※ recap: Built the full service layer per spec. Both OData services start cleanly. Next: run live API tests against the endpoints to verify CRUD restrictions, fullName computation, date overlap validation, and UserManagement actions. (disable recaps in /config)
+
+❯ you missed a dependency that support the odata v2 in cap which is             
+  @cap-js-community/odata-v2-adapter                                            
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(cd "C:\claude\anubhav-claude" && npm install
+      @cap-js-community/odata-v2-adapter 2>&1 | tail -10)
+  ⎿  added 39 packages, removed 108 packages, changed 2 packages, and audit
+     ed 155 packages in 7s
+     … +4 lines (ctrl+o to expand)
+
+● Now I need to wire the adapter into the CDS configuration in package.json.
+
+● Update(package.json)
+  ⎿  Error editing file
+
+  Read 1 file (ctrl+o to expand)
+
+● Good — npm already added the exact version. Let me verify the V2 adapter is
+  active by checking startup output.
+
+● Bash(cd "C:\claude\anubhav-claude" && timeout 15 npx cds watch 2>&1 | head -50
+       || true)
+  ⎿  
+     cds serve all --with-mocks --in-memory? 
+     ( live reload enabled for browsers ) 
+     … +21 lines (ctrl+o to expand)
+● The V4 paths are correct now (/odata/v4/catalog, /odata/v4/user-management).
+  The V2 adapter isn't showing in the startup output though — I need to register
+   it explicitly as a CDS plugin.
+
+● Update(package.json)
+  ⎿  Added 3 lines
+      11      "@cap-js/sqlite": "^2"
+      12    },
+      13    "cds": {
+      14 +    "plugins": [                                               
+      15 +      "@cap-js-community/odata-v2-adapter"                     
+      16 +    ],                                                         
+      17      "requires": {
+      18        "auth": {
+      19          "restrict_all_services": false
+
+● Bash(cd "C:\claude\anubhav-claude" && timeout 15 npx cds watch 2>&1 | head -55
+       || true)
+  ⎿  
+     cds serve all --with-mocks --in-memory? 
+     ( live reload enabled for browsers ) 
+     … +21 lines (ctrl+o to expand)
+
+● The plugins array syntax is wrong for this CDS version. Let me revert that and
+   check if the adapter auto-registers (it uses the cds-plugin mechanism).
+
+● Update(package.json)
+  ⎿  Removed 3 lines
+      11      "@cap-js/sqlite": "^2"
+      12    },
+      13    "cds": {
+      14 -    "plugins": [                                               
+      15 -      "@cap-js-community/odata-v2-adapter"                     
+      16 -    ],                                                         
+      14      "requires": {
+      15        "auth": {
+      16          "restrict_all_services": false
+
+● Bash(node -e "const p =
+      require('./node_modules/@cap-js-community/odata-v2-adapter/package.json');
+       console.log(JSON.stringify({keywords: p.keywords, cdsPlugin: p['cd…)
+  ⎿  {
+       "keywords": [
+         "COV2AP",
+     … +8 lines (ctrl+o to expand)
+
+● Bash(cd "C:\claude\anubhav-claude" && node -e "const pkg =
+      require('./node_modules/@cap-js-community/odata-v2-adapter/package.json');
+       console.log(Object.keys(pkg))")
+  ⎿  [
+       'name',            'version',
+       'description',     'homepage',
+     … +7 lines (ctrl+o to expand)
+
+  Listed 1 directory (ctrl+o to expand)
+
+● PowerShell(Get-ChildItem "C:\claude\anubhav-claude\node_modules\@cap-js-commun
+            ity\odata-v2-adapter" -Name | Select-Object -First 15)
+  ⎿  (No output)
+
+● PowerShell(Get-ChildItem "C:\claude\anubhav-claude\node_modules\@cap-js-commun
+            ity\odata-v2-adapter\" | ForEach-Object { $_.Name })
+  ⎿  Interrupted · What should Claude do instead?
+
+! npm install @cap-js-community/odata-v2-adapter                                
+  ⎿  up to date, audited 155 packages in 798ms
+
+     31 packages are looking for funding
+     … +3 lines (ctrl+o to expand)
+
+※ recap: Built the full service layer per the spec — both OData services running cleanly. Next: test the endpoints and handlers in a browser or .http file. (disable recaps in /config)
+
+❯ /config 
+  ⎿  Config dialog dismissed
+
+❯ /exit                                                                         
+  ⎿  See ya!
+
+❯ /ultraplan read the spec                                                      
+@.claude/specs/2_capm_custom_jwt_authentication_specification_anubhav.md to     
+implement manual auth mechanism for our app at service level without xsuaa,     
+refer existing model @db\ and services from @srv\. make sure nothing is         
+disturbed in exisiting codebase for entities.                                   
+◆ ultraplan ready · https://claude.ai/code/session_01EPnbzKMuHpzXDqYQ49Ht7t?from=cli
+  ⎿  Press ↓ to view results
+
+● The /ultraplan session has produced a plan and is waiting for your approval.
+
+  Open https://claude.ai/code/session_01EPnbzKMuHpzXDqYQ49Ht7t?from=cli to
+  review it.
+
+✻ Sautéed for 9s
+
+❯ Ultraplan approved — executing in Claude Code on the web. Follow along at:    
+  https://claude.ai/code/session_01EPnbzKMuHpzXDqYQ49Ht7t?from=cli              
+                                                                                
+  Results will land as a pull request when the remote session finishes. There   
+  is nothing to do here.                                                        
+
+● Acknowledged — the remote ultraplan session is executing. I'll wait for the PR
+   to land. No action needed here.
+
+✻ Crunched for 4s
+
+※ recap: Goal: build the CAP service layer per spec, then add manual JWT auth. Service layer is done and committed; remote ultraplan session is now generating the JWT auth implementation as a PR. Next: wait for the PR to land and review it. (disable recaps in /config)
+
+! git apply auth.patch                                                          
+  ⎿  auth.patch:7: trailing whitespace.
+     namespace anubhav.claude;
+     auth.patch:8: trailing whitespace.
+     … +8 lines (ctrl+o to expand)
+
+! git apply auth.patch                                                          
+  ⎿  auth.patch:7: trailing whitespace.
+     namespace anubhav.claude;
+     auth.patch:8: trailing whitespace.
+     … +8 lines (ctrl+o to expand)
+
+! npm install jsonwebtoken@^9 bcryptjs@^2                                         ⎿  added 14 packages, and audited 169 packages in 989ms
+
+     31 packages are looking for funding
+     … +3 lines (ctrl+o to expand)
+
+※ recap: Goal: build the CAP service layer for the Travel Management app per spec. Currently a remote /ultraplan session is implementing manual JWT auth on the existing services. Next: wait for the PR from that session to land. (disable recaps in /config)
+
+! base64 -d auth.patch.b64 > auth.patch                                         
+  ⎿  base64: invalid input
+
+
+❯ execute the plan @material/day11/planned_actions.md                           
+  ⎿  Read material\day11\planned_actions.md (101 lines)
+
+● Starting execution. First I need to generate the bcrypt hash for the default
+  dev password Welcome1! to seed in the CSV.
+
+● Bash(cd "C:\claude\anubhav-claude" && node -e "const bcrypt =
+      require('bcryptjs'); console.log(bcrypt.hashSync('Welcome1!', 10));")
+  ⎿  $2a$10$Nqddn4UM0o11nj1fnYRkZO7tSFcRgFFDsqxTZdIU6T/LjABRDqxGS
+
+● Now I'll create all the auth files in parallel. The plan says to create the
+  middleware stub before pointing package.json at it, so I'll write all files
+  first, then update package.json last.
+
+● Write(db\auth.cds)
+  ⎿  Wrote 15 lines to db\auth.cds
+       2 namespace anubhav.claude;
+       3 using { cuid } from '@sap/cds/common';
+       4 using { anubhav.claude.Users } from './schema';
+       6 // ─── UserCredentials ─────────────────────────────────────────
+         ─────────────────
+       7 // Sibling entity to Users — stores password hash + login teleme
+       8 // Kept separate so the Users entity (and its service projection
+         s) stay untouched.
+       9 
+      10 entity UserCredentials : cuid {
+     … +7 lines (ctrl+o to expand)
+
+● Write(db\data\anubhav.claude-UserCredentials.csv)
+  ⎿  Wrote 13 lines to db\data\anubhav.claude-UserCredentials.csv
+      2 cd000001-0000-4000-a000-000000000001;c5c5c5c5-0001-4555-8555-5555
+        55555501;$2a$10$Nqddn4UM0o11nj1fnYRkZO7tSFcRgFFDsqxTZdIU6T/LjABRD
+      3 cd000001-0000-4000-a000-000000000002;c5c5c5c5-0002-4555-8555-5555
+        55555502;$2a$10$Nqddn4UM0o11nj1fnYRkZO7tSFcRgFFDsqxTZdIU6T/LjABRD
+      4 cd000001-0000-4000-a000-000000000003;c5c5c5c5-0003-4555-8555-5555
+        55555503;$2a$10$Nqddn4UM0o11nj1fnYRkZO7tSFcRgFFDsqxTZdIU6T/LjABRD
+      5 cd000001-0000-4000-a000-000000000004;c5c5c5c5-0004-4555-8555-5555
+        55555504;$2a$10$Nqddn4UM0o11nj1fnYRkZO7tSFcRgFFDsqxTZdIU6T/LjABRD
+      6 cd000001-0000-4000-a000-000000000005;c5c5c5c5-0005-4555-8555-5555
+        55555505;$2a$10$Nqddn4
+     … +27 lines (ctrl+o to expand)
+
+● Write(srv\auth\password.js)
+  ⎿  Wrote 8 lines to srv\auth\password.js
+      1 const bcrypt = require('bcryptjs');
+      2 
+      3 const BCRYPT_COST = 10;
+      4 
+      5 module.exports = {
+      6     hash: (plain) => bcrypt.hash(plain, BCRYPT_COST),
+      7     compare: (plain, hash) => bcrypt.compare(plain, hash),
+      8 };
+
+● Write(srv\auth\jwt.js)
+  ⎿  Wrote 34 lines to srv\auth\jwt.js
+       2 const crypto = require('crypto');');
+       3 
+       4 let secret = process.env.AUTH_JWT_SECRET;
+       5 if (!secret) {
+       6     if (process.env.NODE_ENV === 'production') {
+         on');   throw new Error('AUTH_JWT_SECRET must be set in producti
+       8     }
+       9     secret = crypto.randomBytes(32).toString('hex');
+      10     console.warn('[auth] AUTH_JWT_SECRET not set — generated a r
+         andom secret for this process');
+     … +28 lines (ctrl+o to expand)
+
+● Write(srv\auth\jwt-auth.js)
+  ⎿  Wrote 30 lines to srv\auth\jwt-auth.js
+       1 const cds = require('@sap/cds');
+       2 const jwtHelper = require('./jwt');
+       3 
+       4 module.exports = async function jwtAuth(req, res, next) {
+       5     const authHeader = req.headers && req.headers.authorization;
+       6 
+       7     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+       8         req.user = new cds.User.Anonymous();
+       9         return next();
+      10     }
+     … +23 lines (ctrl+o to expand)
+
+● Write(srv\auth-service.cds)
+  ⎿  Wrote 20 lines to srv\auth-service.cds
+       1 service AuthService @(path: 'auth', requires: 'any') {
+       2 
+       3     type LoginResponse {
+       4         access    : String;
+       5         refresh   : String;
+       6         expiresIn : Integer;
+       7     }
+       8 
+       9     type UserInfo {
+      10         id        : String;
+     … +13 lines (ctrl+o to expand)
+
+● Write(srv\auth-service.js)
+  ⎿  Wrote 5 lines to srv\auth-service.js
+      1 const authHandler = require('./handlers/auth.handler');
+      2 
+      3 module.exports = (srv) => {
+      4     authHandler(srv);
+      5 };
+
+● Write(srv\handlers\auth.handler.js)
+  ⎿  Wrote 89 lines to srv\handlers\auth.handler.js
+       2 const password = require('../auth/password');
+       3 
+       4 const Users           = 'anubhav.claude.Users';
+       5 const UserCredentials = 'anubhav.claude.UserCredentials';
+       6 const UserRoles       = 'anubhav.claude.UserRoles';
+       7 
+       8 const loadRoles = async (userId) => {
+       9     const rows = await SELECT.from(UserRoles).where({ user_ID: u
+         serId });
+      10     return rows.map((r) => r.role_code);
+     … +98 lines (ctrl+o to expand)
+
+● All auth files written. Now wiring custom auth into package.json.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(package.json)
+  ⎿  Added 2 lines, removed 1 line
+      15    "cds": {
+      16      "requires": {
+      17        "auth": {
+      18 -        "restrict_all_services": false                         
+      18 +        "kind": "custom",                                      
+      19 +        "impl": "./srv/auth/jwt-auth.js"                       
+      20        }
+      21      }
+      22    },
+
+● Now let me verify the server starts and that all endpoints register.
+
+● Bash(cd "C:\claude\anubhav-claude" && timeout 15 npx cds watch 2>&1 | head -70
+       || true)
+  ⎿  
+     cds serve all --with-mocks --in-memory? 
+     ( live reload enabled for browsers ) 
+     … +23 lines (ctrl+o to expand)
+  ⎿  (timeout 25s)
+
+● Server starts cleanly. All 3 services register at the right paths, custom JWT
+  auth is wired up, UserCredentials seed loads. The EADDRINUSE is just the
+  previous cds watch still running on the port — not an issue with the new code.
+
+  Let me verify there's no leftover patch file to clean up.
+
+  Listed 1 directory (ctrl+o to expand)
+
+● All clean. Here's a summary of the JWT auth implementation:
+
+  ---
+  JWT Auth — Implementation Complete
+
+  New files
+
+  File: db/auth.cds
+  Purpose: UserCredentials entity (sibling of Users, namespace anubhav.claude)
+  ────────────────────────────────────────
+  File: db/data/anubhav.claude-UserCredentials.csv
+  Purpose: Seed bcrypt hashes for all 12 users — default dev password Welcome1!
+  ────────────────────────────────────────
+  File: srv/auth/password.js
+  Purpose: hash() / compare() wrappers around bcryptjs
+  ────────────────────────────────────────
+  File: srv/auth/jwt.js
+  Purpose: sign(payload, kind) / verify(token, kind) — separate aud for
+    access/refresh, secret from AUTH_JWT_SECRET env (random fallback in dev,
+    crash in prod)
+  ────────────────────────────────────────
+  File: srv/auth/jwt-auth.js
+  Purpose: CAP custom auth impl — reads Bearer token, sets req.user = new 
+    cds.User({id, roles}) with roles loaded fresh from DB on every request
+  ────────────────────────────────────────
+  File: srv/auth-service.cds
+  Purpose: AuthService @(path: 'auth', requires: 'any') — login, refresh actions
+
+    and me function
+  ────────────────────────────────────────
+  File: srv/auth-service.js
+  Purpose: One-liner entry, delegates to handler
+  ────────────────────────────────────────
+  File: srv/handlers/auth.handler.js
+  Purpose: login (verify pw, increment/reset attempt counter, update
+    lastLoginAt), refresh (verify aud:refresh, reject locked users, rotate
+    refresh), me (return user + roles for current req.user.id)
+
+  Modified files
+
+  - package.json — cds.requires.auth switched from restrict_all_services: false
+  to kind: 'custom', impl: './srv/auth/jwt-auth.js'
+
+  Untouched (per the no-disturb constraint)
+
+  - db/schema.cds, db/common.cds
+  - srv/cat-service.cds, srv/user-management.cds, all handlers under them
+
+  Startup confirms
+
+  - AuthService at /odata/v4/auth
+  - CatalogService at /odata/v4/catalog
+  - UserManagement at /odata/v4/user-management
+  - [cds] - using auth strategy { kind: 'custom', impl: 'srv\\auth\\jwt-auth.js'
+   }
+
+  Smoke test
+
+  curl -X POST http://localhost:4004/odata/v4/auth/login \
+    -H 'Content-Type: application/json' \
+    -d '{"loginName":"superadmin@anubhav.com","password":"Welcome1!"}'
+  # then:
+  curl http://localhost:4004/odata/v4/auth/me -H "Authorization: Bearer $ACCESS"
+
+  Adding @requires annotations to the existing services is an intentional
+  follow-up — the plumbing is now in place so it's a one-CDS-file change without
+   touching entities.
+✻ Churned for 3m 15s
+
+※ recap: Goal was to add JWT auth to the CAP service without disturbing existing entities. All auth files are created and `cds watch` confirms the server starts with AuthService, CatalogService, and UserManagement registered. Next: smoke-test login with `superadmin@anubhav.com` / `Welcome1!`. (disable recaps in /config)

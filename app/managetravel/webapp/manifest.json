@@ -1,0 +1,149 @@
+{
+  "_version": "1.59.0",
+  "sap.app": {
+    "id": "anubhav.claude.managetravel",
+    "type": "application",
+    "i18n": "i18n/i18n.properties",
+    "applicationVersion": {
+      "version": "0.0.1"
+    },
+    "title": "{{appTitle}}",
+    "description": "{{appDescription}}",
+    "dataSources": {
+      "catalog": {
+        "uri": "/odata/v4/catalog/",
+        "type": "OData",
+        "settings": {
+          "odataVersion": "4.0"
+        }
+      },
+      "usermgmt": {
+        "uri": "/odata/v4/user-management/",
+        "type": "OData",
+        "settings": {
+          "odataVersion": "4.0"
+        }
+      }
+    }
+  },
+  "sap.ui": {
+    "technology": "UI5",
+    "deviceTypes": {
+      "desktop": true,
+      "tablet": true,
+      "phone": true
+    }
+  },
+  "sap.ui5": {
+    "flexEnabled": false,
+    "dependencies": {
+      "minUI5Version": "1.148.0",
+      "libs": {
+        "sap.m": {},
+        "sap.ui.core": {},
+        "sap.ui.layout": {},
+        "sap.viz": {}
+      }
+    },
+    "contentDensities": {
+      "compact": true,
+      "cozy": true
+    },
+    "models": {
+      "i18n": {
+        "type": "sap.ui.model.resource.ResourceModel",
+        "settings": {
+          "bundleName": "anubhav.claude.managetravel.i18n.i18n"
+        }
+      },
+      "": {
+        "dataSource": "catalog",
+        "preload": false,
+        "settings": {
+          "operationMode": "Server",
+          "autoExpandSelect": true,
+          "earlyRequests": false,
+          "groupId": "$auto"
+        }
+      },
+      "mgmt": {
+        "dataSource": "usermgmt",
+        "preload": false,
+        "settings": {
+          "operationMode": "Server",
+          "autoExpandSelect": true,
+          "earlyRequests": false,
+          "groupId": "$auto"
+        }
+      }
+    },
+    "resources": {
+      "css": [
+        {
+          "uri": "css/style.css"
+        }
+      ]
+    },
+    "routing": {
+      "config": {
+        "routerClass": "sap.m.routing.Router",
+        "viewType": "XML",
+        "async": true,
+        "viewPath": "anubhav.claude.managetravel.view",
+        "controlId": "mainNav",
+        "controlAggregation": "pages",
+        "clearControlAggregation": false
+      },
+      "routes": [
+        {
+          "name": "login",
+          "pattern": "",
+          "target": ["login"]
+        },
+        {
+          "name": "adminDashboard",
+          "pattern": "admin",
+          "target": ["adminDashboard"]
+        },
+        {
+          "name": "travellerDashboard",
+          "pattern": "traveller",
+          "target": ["travellerDashboard"]
+        },
+        {
+          "name": "travelDetail",
+          "pattern": "traveller/location/{locationId}",
+          "target": ["travelDetail"]
+        }
+      ],
+      "targets": {
+        "login": {
+          "viewId": "login",
+          "viewName": "Login",
+          "transition": "show"
+        },
+        "adminDashboard": {
+          "viewId": "adminDashboard",
+          "viewName": "AdminDashboard",
+          "transition": "slide"
+        },
+        "travellerDashboard": {
+          "viewId": "travellerDashboard",
+          "viewName": "TravellerDashboard",
+          "transition": "slide"
+        },
+        "travelDetail": {
+          "viewId": "travelDetail",
+          "viewName": "TravelDetail",
+          "transition": "slide"
+        }
+      }
+    },
+    "rootView": {
+      "viewName": "anubhav.claude.managetravel.view.App",
+      "type": "XML",
+      "async": true,
+      "id": "App"
+    }
+  }
+}

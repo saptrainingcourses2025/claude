@@ -1,0 +1,17 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "anubhav",
+            "database": "db.sqlite"
+        },
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "anubhav",
+            "database": "${workspaceFolder:claude}/anubhav-claude/db.sqlite"
+        }
+    ],
+    "liveServer.settings.port": 5501
+}

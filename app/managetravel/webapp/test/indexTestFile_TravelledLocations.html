@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<!--
+    indexTestFile_TravelledLocations.html
+    ──────────────────────────────────────
+    OPA5 integration test runner for the TravelledLocations feature.
+
+    Open in a browser while a static server is serving the webapp/ directory, e.g.:
+        http://localhost:4100/test/indexTestFile_TravelledLocations.html
+
+    Backend requirement:
+        All OData and auth calls are intercepted by AuthStub (sinon.fakeServer), so
+        NO live CAP backend is required as long as the SAPUI5 CDN is reachable.
+
+    SAPUI5 version: 1.148.0  (matches manifest.json minUI5Version)
+
+    Bootstrap strategy:
+        1. A pre-bootstrap script computes the absolute URL to the webapp/ root
+           (one level up from test/) and registers it as the resource root for
+           "anubhav.claude.managetravel" using sap.ui.loader.config.
+           This must be done BEFORE sap-ui-core.js loads so the module system
+           can resolve Component.js and manifest.json correctly.
+        2. The sap-ui-bootstrap script tag uses data-sap-ui-resourceroots with a
+           placeholder; the real registration comes from step 1.
+        3. Core.attachInit loads QUnit 2 and the opaTests.qunit bootstrap.
+        4. opaTests.qunit installs AuthStub and requires AllJourneys (which
+           registers the QUnit modules + opaTest calls).
+        5. QUnit.start() is called explicitly after setup completes.
+-->
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPA5 Tests — Travelled Locations | TravelHub</title>
+
+    <!-- QUnit 2 stylesheet — must be loaded before SAPUI5 so the results page renders -->
+    <link
+        rel="stylesheet"
+        href="https://sapui5.hana.ondemand.com/1.148.0/resources/sap/ui/thirdparty/qunit-2.css"
+    />
+
+    <!--
+        Step 1: Compute the absolute webapp/ URL before the SAPUI5 bootstrap fires.
+        window.location.href at this point is the URL of THIS html file, e.g.:
+            http://localhost:4100/test/indexTestFile_TravelledLocations.html
+        Stripping the filename and going one level up gives:
+            http://localhost:4100/
+        That is the webapp/ root — the correct resource root for the component.
+
+        We store this in window.__appRoot and also pre-configure sap.ui.loader
+        immediately after the bootstrap tag below so the module system can find
+        manifest.json and Component.js before any sap.ui.define calls run.
+    -->
+    <script>
+        (function () {
+            var sHref   = window.location.href;
+            // Remove filename to get the test/ directory URL, then go one level up.
+            var sTestDir = sHref.substring(0, sHref.lastIndexOf("/") + 1); // .../test/
+            var sWebappRoot = sTestDir.substring(0, sTestDir.lastIndexOf("/", sTestDir.length - 2) + 1); // .../
+            window.__appRoot = sWebappRoot;
+        }());
+    </script>
+
+    <script
+        id="sap-ui-bootstrap"
+        src="https://sapui5.hana.ondemand.com/1.148.0/resources/sap-ui-core.js"
+        data-sap-ui-theme="sap_horizon"
+        data-sap-ui-libs="sap.m,sap.ui.core,sap.ui.layout,sap.viz"
+        data-sap-ui-compatVersion="edge"
+        data-sap-ui-async="true"
+        data-sap-ui-preload="async"
+        data-sap-ui-frameOptions="trusted"
+        data-sap-ui-language="en"
+    ></script>
+
+    <script>
+        // Step 2: Register the absolute resource root IMMEDIATELY after the
+        // bootstrap script tag (synchronously, before Core.attachInit fires).
+        // sap.ui.loader is available synchronously after sap-ui-core.js loads
+        // because async=true only applies to the libs, not the loader itself.
+        (function () {
+            var oPaths = {};
+            oPaths["anubhav/claude/managetravel"] = window.__appRoot;
+            sap.ui.loader.config({ paths: oPaths });
+        }());
+
+        /**
+         * Wait for the SAPUI5 Core (and all declared libs) to finish loading,
+         * then require the OPA5 test bootstrap.
+         *
+         * Loading order:
+         *   1. sap-ui-core.js  (async bootstrap above)
+         *   2. Core.attachInit callback fires when all declared libs are ready
+         *   3. QUnit 2 runtime is loaded via sap/ui/thirdparty/qunit-2
+         *   4. opaTests.qunit installs AuthStub + requires AllJourneys
+         *   5. AllJourneys requires TravelledLocationsJourney which registers modules
+         *   6. QUnit.start() is called explicitly (autostart is disabled by opaQunit)
+         */
+        sap.ui.getCore().attachInit(function () {
+            sap.ui.require([
+                "sap/ui/thirdparty/qunit-2",
+                "anubhav/claude/managetravel/test/opaTests.qunit"
+            ], function () {
+                // opaQunit sets QUnit.config.autostart = false in SAPUI5 1.120+.
+                // We must call QUnit.start() explicitly after all modules are loaded.
+                if (typeof QUnit !== "undefined" && !QUnit.config.autostart) {
+                    QUnit.start();
+                }
+            });
+        });
+    </script>
+</head>
+
+<body class="sapUiBody sapUiSizeCompact">
+    <!--
+        QUnit renders its test result UI into these two divs.
+        The app under test is mounted inside a container div managed by OPA5 —
+        it does not need a placeholder here.
+    -->
+    <div id="qunit"></div>
+    <div id="qunit-fixture"></div>
+</body>
+</html>

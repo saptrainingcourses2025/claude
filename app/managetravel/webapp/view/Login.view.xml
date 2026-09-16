@@ -1,0 +1,47 @@
+<mvc:View controllerName="anubhav.claude.managetravel.controller.Login"
+          xmlns:mvc="sap.ui.core.mvc"
+          xmlns:l="sap.ui.layout"
+          xmlns:f="sap.ui.layout.form"
+          xmlns:core="sap.ui.core"
+          xmlns="sap.m"
+          displayBlock="true">
+    <Page id="loginPage" showHeader="false" class="thLoginPage">
+        <content>
+            <VBox class="thLoginBg" alignItems="Center" justifyContent="Center">
+                <Text text="{i18n>login.brand}" class="thLoginBrand"/>
+                <Panel class="thLoginCard3D" width="34rem">
+                    <VBox class="thLoginInner">
+                        <Title text="{i18n>login.title}" level="H2" class="thLoginTitle"/>
+                        <VBox class="thFieldWrap">
+                            <Label text="{i18n>login.email}" class="thFieldLabel"/>
+                            <HBox class="thInputRow">
+                                <Input id="inEmail" value="{/loginName}" type="Email" submit=".onLogin" class="thLoginInput" width="100%">
+                                    <layoutData><FlexItemData growFactor="1"/></layoutData>
+                                </Input>
+                                <core:Icon src="sap-icon://email" class="thInputIcon"/>
+                            </HBox>
+                        </VBox>
+                        <VBox class="thFieldWrap">
+                            <Label text="{i18n>login.password}" class="thFieldLabel"/>
+                            <HBox class="thInputRow">
+                                <Input id="inPassword" value="{/password}" type="Password" submit=".onLogin" class="thLoginInput" width="100%">
+                                    <layoutData><FlexItemData growFactor="1"/></layoutData>
+                                </Input>
+                                <core:Icon src="sap-icon://locked" class="thInputIcon"/>
+                            </HBox>
+                        </VBox>
+                        <HBox justifyContent="SpaceBetween" alignItems="Center" class="thLoginRow">
+                            <CheckBox text="{i18n>login.rememberMe}" class="thRemember"/>
+                            <Link text="{i18n>login.forgotPassword}" press=".onForgotPassword" class="thForgot"/>
+                        </HBox>
+                        <Button text="{i18n>login.button}" type="Emphasized" press=".onLogin" class="thLoginBtn"/>
+                        <HBox justifyContent="Center" class="thLoginFooter">
+                            <Text text="{i18n>login.noAccount}"/>
+                            <Link text="{i18n>login.register}" press=".onOpenRegister" class="thRegisterLink"/>
+                        </HBox>
+                    </VBox>
+                </Panel>
+            </VBox>
+        </content>
+    </Page>
+</mvc:View>

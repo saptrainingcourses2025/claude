@@ -1,0 +1,875 @@
+### ============================================================
+###  BTP CAP TRAVEL MANAGEMENT APPLICATION — HTTP TEST FILE
+###  Anubhav Trainings  |  SAP BTP  |  CAP  |  OData V4
+###  Use with REST Client (VS Code) or JetBrains HTTP Client
+### ============================================================
+
+### ── VARIABLES ──────────────────────────────────────────────
+@base_v4       = http://localhost:4004/odata/v4
+@base_v2       = http://localhost:4004/odata/v2
+@catalog       = {{base_v4}}/catalog
+@usermgmt      = {{base_v4}}/user-management
+@catalog_v2    = {{base_v2}}/catalog
+
+### ── Test IDs (fill after create responses) ─────────────────
+@travellerId      = 00000000-0000-0000-0000-000000000001
+@locationId       = 00000000-0000-0000-0000-000000000002
+@destinationId    = 00000000-0000-0000-0000-000000000003
+@userId           = 00000000-0000-0000-0000-000000000004
+@roleId           = 00000000-0000-0000-0000-000000000005
+@etag             = W/"abc123"
+
+### ============================================================
+###  SECTION 1 — SERVICE METADATA
+### ============================================================
+
+### 1.1  CatalogService $metadata
+GET {{catalog}}/$metadata
+Accept: application/xml
+
+###
+
+### 1.2  UserManagement $metadata
+GET {{usermgmt}}/$metadata
+Accept: application/xml
+
+###
+
+### 1.3  OData V2 CatalogService $metadata
+GET {{catalog_v2}}/$metadata
+Accept: application/xml
+
+###
+
+
+### ============================================================
+###  SECTION 2 — DESTINATIONS (Read-only after create)
+### ============================================================
+
+### 2.1  Create Destination — Paris
+# @name createDest1
+POST {{catalog}}/Destinations
+Content-Type: application/json
+
+{
+  "name": "Paris, Eiffel Quarter",
+  "country": "France",
+  "city": "Paris",
+  "region": "Île-de-France",
+  "description": "Cultural hub with iconic landmarks and world-class cuisine."
+}
+
+###
+
+### 2.2  Create Destination — Tokyo
+# @name createDest2
+POST {{catalog}}/Destinations
+Content-Type: application/json
+
+{
+  "name": "Tokyo Central",
+  "country": "Japan",
+  "city": "Tokyo",
+  "region": "Kanto",
+  "description": "Vibrant metropolis blending tradition and modernity."
+}
+
+###
+
+### 2.3  Create Destination — New York
+POST {{catalog}}/Destinations
+Content-Type: application/json
+
+{
+  "name": "New York Midtown",
+  "country": "USA",
+  "city": "New York",
+  "region": "New York State",
+  "description": "Financial and cultural capital of the United States."
+}
+
+###
+
+### 2.4  Read all Destinations
+GET {{catalog}}/Destinations
+Accept: application/json
+
+###
+
+### 2.5  Read single Destination
+GET {{catalog}}/Destinations({{destinationId}})
+Accept: application/json
+
+###
+
+### 2.6  EDGE CASE — PATCH Destination must return 405
+PATCH {{catalog}}/Destinations({{destinationId}})
+Content-Type: application/json
+
+{
+  "description": "Should not be allowed"
+}
+
+###
+
+### 2.7  EDGE CASE — DELETE Destination must return 405
+DELETE {{catalog}}/Destinations({{destinationId}})
+
+###
+
+
+### ============================================================
+###  SECTION 3 — TRAVELLERS
+### ============================================================
+
+### 3.1  Create Traveller — John Smith
+# @name createTraveller1
+POST {{catalog}}/Travellers
+Content-Type: application/json
+
+{
+  "firstName": "John",
+  "lastName": "Smith",
+  "email": "john.smith@company.com",
+  "phone": "+49-151-12345678",
+  "userID": "john.smith@company.com",
+  "type_code": "FRQ",
+  "status_code": "ACT",
+  "addressType_code": "HOME"
+}
+
+###
+
+### 3.2  Create Traveller — Priya Sharma
+# @name createTraveller2
+POST {{catalog}}/Travellers
+Content-Type: application/json
+
+{
+  "firstName": "Priya",
+  "lastName": "Sharma",
+  "email": "priya.sharma@company.com",
+  "phone": "+91-98765-43210",
+  "userID": "priya.sharma@company.com",
+  "type_code": "EXE",
+  "status_code": "ACT",
+  "addressType_code": "OFFICE"
+}
+
+###
+
+### 3.3  Read all Travellers (Admin sees all rows)
+GET {{catalog}}/Travellers
+Accept: application/json
+
+###
+
+### 3.4  Read Travellers — verify fullName is computed
+GET {{catalog}}/Travellers
+Accept: application/json
+# Verify: fullName = "John Smith" present; not stored in DB
+
+###
+
+### 3.5  Read Traveller with $select including fullName
+GET {{catalog}}/Travellers({{travellerId}})
+  ?$select=ID,firstName,lastName,fullName,status_code
+Accept: application/json
+
+###
+
+### 3.6  Update Traveller — valid PATCH with ETag
+PATCH {{catalog}}/Travellers({{travellerId}})
+Content-Type: application/json
+If-Match: {{etag}}
+
+{
+  "phone": "+49-151-99999999",
+  "status_code": "ACT"
+}
+
+###
+
+### 3.7  EDGE CASE — PATCH without If-Match → 428
+PATCH {{catalog}}/Travellers({{travellerId}})
+Content-Type: application/json
+
+{
+  "phone": "+49-151-00000000"
+}
+
+###
+
+### 3.8  EDGE CASE — PATCH with stale ETag → 412
+PATCH {{catalog}}/Travellers({{travellerId}})
+Content-Type: application/json
+If-Match: W/"stale-etag-value"
+
+{
+  "phone": "+49-151-00000000"
+}
+
+###
+
+### 3.9  EDGE CASE — CREATE with missing firstName → 400
+POST {{catalog}}/Travellers
+Content-Type: application/json
+
+{
+  "lastName": "OnlyLastName",
+  "email": "nofirst@company.com",
+  "userID": "nofirst@company.com",
+  "type_code": "STD",
+  "status_code": "ACT"
+}
+
+###
+
+### 3.10  EDGE CASE — CREATE with duplicate email → 409
+POST {{catalog}}/Travellers
+Content-Type: application/json
+
+{
+  "firstName": "John",
+  "lastName": "Duplicate",
+  "email": "john.smith@company.com",
+  "userID": "john.smith2@company.com",
+  "type_code": "STD",
+  "status_code": "ACT"
+}
+
+###
+
+
+### ============================================================
+###  SECTION 4 — TRAVELLED LOCATIONS
+### ============================================================
+
+### 4.1  Create Location — John in Paris (non-overlapping)
+# @name createLoc1
+POST {{catalog}}/TravelledLocations
+Content-Type: application/json
+
+{
+  "traveller_ID": "{{travellerId}}",
+  "destination_ID": "{{destinationId}}",
+  "travelFrom": "2025-03-10",
+  "travelTo": "2025-03-17",
+  "notes": "Spring conference trip to Paris."
+}
+
+###
+
+### 4.2  Create Location — John in Tokyo (different dates, no overlap)
+POST {{catalog}}/TravelledLocations
+Content-Type: application/json
+
+{
+  "traveller_ID": "{{travellerId}}",
+  "destination_ID": "{{destinationId}}",
+  "travelFrom": "2025-05-01",
+  "travelTo": "2025-05-08",
+  "notes": "Team offsite in Tokyo."
+}
+
+###
+
+### 4.3  EDGE CASE — Overlapping dates for same traveller → 409
+POST {{catalog}}/TravelledLocations
+Content-Type: application/json
+
+{
+  "traveller_ID": "{{travellerId}}",
+  "destination_ID": "{{destinationId}}",
+  "travelFrom": "2025-03-14",
+  "travelTo": "2025-03-20",
+  "notes": "This overlaps the Paris trip — should fail."
+}
+
+###
+
+### 4.4  EDGE CASE — travelFrom > travelTo → 400
+POST {{catalog}}/TravelledLocations
+Content-Type: application/json
+
+{
+  "traveller_ID": "{{travellerId}}",
+  "destination_ID": "{{destinationId}}",
+  "travelFrom": "2025-06-15",
+  "travelTo": "2025-06-10",
+  "notes": "Invalid: start is after end."
+}
+
+###
+
+### 4.5  Read all Locations for current user
+GET {{catalog}}/TravelledLocations
+Accept: application/json
+
+###
+
+### 4.6  Delete a Location
+DELETE {{catalog}}/TravelledLocations({{locationId}})
+
+###
+
+### 4.7  EDGE CASE — PATCH Location is not allowed → 405
+PATCH {{catalog}}/TravelledLocations({{locationId}})
+Content-Type: application/json
+
+{
+  "notes": "Trying to update immutable record."
+}
+
+###
+
+
+### ============================================================
+###  SECTION 5 — VALUE HELPS
+### ============================================================
+
+### 5.1  Get all TravellerStatus values
+GET {{catalog}}/TravellerStatus
+Accept: application/json
+
+###
+
+### 5.2  Get all AddressTypes
+GET {{catalog}}/AddressTypes
+Accept: application/json
+
+###
+
+### 5.3  Get all TravellerTypes
+GET {{catalog}}/TravellerTypes
+Accept: application/json
+
+###
+
+### 5.4  EDGE CASE — POST to TravellerTypes → 405
+POST {{catalog}}/TravellerTypes
+Content-Type: application/json
+
+{
+  "code": "NEW",
+  "description": "Should not be allowed"
+}
+
+###
+
+
+### ============================================================
+###  SECTION 6 — $EXPAND CALLS (Dependent Entity Reads)
+### ============================================================
+
+### 6.1  Travellers + all Visited Locations
+GET {{catalog}}/Travellers
+  ?$expand=locations
+Accept: application/json
+
+###
+
+### 6.2  Travellers + Locations + each Location's Destination
+GET {{catalog}}/Travellers
+  ?$expand=locations($expand=destination)
+Accept: application/json
+
+###
+
+### 6.3  Travellers with $select + nested $expand + $select
+GET {{catalog}}/Travellers
+  ?$select=ID,firstName,lastName,fullName,status_code
+  &$expand=locations($select=travelFrom,travelTo,notes;$expand=destination($select=name,country,city))
+Accept: application/json
+
+###
+
+### 6.4  Single Traveller with full expand
+GET {{catalog}}/Travellers({{travellerId}})
+  ?$expand=locations($expand=destination),type,status,addressType
+Accept: application/json
+
+###
+
+### 6.5  Travelled Locations with Destination expanded
+GET {{catalog}}/TravelledLocations
+  ?$expand=destination
+  &$orderby=travelFrom desc
+Accept: application/json
+
+###
+
+### 6.6  Travelled Locations with both Traveller and Destination
+GET {{catalog}}/TravelledLocations({{locationId}})
+  ?$expand=traveller($select=firstName,lastName,fullName),destination($select=name,country,city)
+Accept: application/json
+
+###
+
+### 6.7  Filter active travellers + expand locations in 2025
+GET {{catalog}}/Travellers
+  ?$filter=status_code eq 'ACT'
+  &$expand=locations($filter=travelFrom ge 2025-01-01;$orderby=travelFrom asc)
+Accept: application/json
+
+###
+
+### 6.8  OData V2 — Travellers with locations expand
+GET {{catalog_v2}}/Travellers?$expand=locations
+Accept: application/json
+
+###
+
+### 6.9  UserManagement — Users with Roles expanded
+GET {{usermgmt}}/Users
+  ?$expand=roles($expand=role)
+Accept: application/json
+
+###
+
+### 6.10  Single User with Role detail
+GET {{usermgmt}}/Users({{userId}})
+  ?$expand=roles($select=role_ID;$expand=role($select=name,description))
+Accept: application/json
+
+###
+
+
+### ============================================================
+###  SECTION 7 — USER MANAGEMENT (Admin only)
+### ============================================================
+
+### 7.1  Read all Users
+GET {{usermgmt}}/Users
+Accept: application/json
+
+###
+
+### 7.2  Read all Roles
+GET {{usermgmt}}/Roles
+Accept: application/json
+
+###
+
+### 7.3  ACTION — createUser (valid)
+# @name createUser1
+POST {{usermgmt}}/createUser
+Content-Type: application/json
+
+{
+  "firstName": "Alice",
+  "lastName": "Admin",
+  "email": "alice.admin@company.com",
+  "roleId": "{{roleId}}"
+}
+
+###
+
+### 7.4  ACTION — createUser with duplicate email → 409
+POST {{usermgmt}}/createUser
+Content-Type: application/json
+
+{
+  "firstName": "Alice",
+  "lastName": "Duplicate",
+  "email": "alice.admin@company.com",
+  "roleId": "{{roleId}}"
+}
+
+###
+
+### 7.5  FUNCTION — lockUser (valid)
+GET {{usermgmt}}/lockUser(userId='{{userId}}')
+Accept: application/json
+# Expected: { value: true }  |  isLocked = true in DB
+
+###
+
+### 7.6  FUNCTION — lockUser already locked (idempotent) → 200 false
+GET {{usermgmt}}/lockUser(userId='{{userId}}')
+Accept: application/json
+# Call again — should return false (already locked), no error
+
+###
+
+### 7.7  FUNCTION — unlockUser
+GET {{usermgmt}}/unlockUser(userId='{{userId}}')
+Accept: application/json
+# Expected: { value: true }  |  isLocked = false in DB
+
+###
+
+### 7.8  FUNCTION — unlockUser on non-existent user → 404
+GET {{usermgmt}}/unlockUser(userId='non-existent-user-id')
+Accept: application/json
+
+###
+
+### 7.9  ACTION — resetPassword (valid)
+POST {{usermgmt}}/resetPassword
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "newPassword": "Secure@12345"
+}
+
+###
+
+### 7.10  EDGE CASE — resetPassword with empty password → 400
+POST {{usermgmt}}/resetPassword
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "newPassword": ""
+}
+
+###
+
+### 7.11  EDGE CASE — resetPassword with short password → 400
+POST {{usermgmt}}/resetPassword
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "newPassword": "abc"
+}
+
+###
+
+### 7.12  ACTION — assignRole (valid)
+POST {{usermgmt}}/assignRole
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "roleId": "{{roleId}}"
+}
+
+###
+
+### 7.13  EDGE CASE — assignRole with invalid roleId → 404
+POST {{usermgmt}}/assignRole
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "roleId": "00000000-0000-0000-0000-999999999999"
+}
+
+###
+
+### 7.14  ACTION — unassignRole (valid)
+POST {{usermgmt}}/unassignRole
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "roleId": "{{roleId}}"
+}
+
+###
+
+### 7.15  EDGE CASE — unassignRole when assignment not found → 404
+POST {{usermgmt}}/unassignRole
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "roleId": "00000000-0000-0000-0000-888888888888"
+}
+
+###
+
+### 7.16  EDGE CASE — Traveller role accessing UserManagement → 403
+# Set auth token to a Traveller-role JWT before sending
+GET {{usermgmt}}/Users
+Accept: application/json
+# Expected: 403 Forbidden
+
+###
+
+
+### ============================================================
+###  SECTION 8 — $BATCH (Bulk / Dependent Data Insert)
+### ============================================================
+
+### 8.1  Batch — Create 3 Destinations at once
+POST {{catalog}}/$batch
+Content-Type: application/json
+
+{
+  "requests": [
+    {
+      "id": "dest-1",
+      "method": "POST",
+      "url": "Destinations",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "name": "Dubai Marina",
+        "country": "UAE",
+        "city": "Dubai",
+        "region": "Dubai",
+        "description": "Modern waterfront district."
+      }
+    },
+    {
+      "id": "dest-2",
+      "method": "POST",
+      "url": "Destinations",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "name": "Singapore Orchard",
+        "country": "Singapore",
+        "city": "Singapore",
+        "region": "Central",
+        "description": "Premier shopping and business district."
+      }
+    },
+    {
+      "id": "dest-3",
+      "method": "POST",
+      "url": "Destinations",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "name": "London Canary Wharf",
+        "country": "United Kingdom",
+        "city": "London",
+        "region": "Greater London",
+        "description": "Major business and financial district."
+      }
+    }
+  ]
+}
+
+###
+
+### 8.2  Batch — Create Traveller + 3 non-overlapping Locations
+POST {{catalog}}/$batch
+Content-Type: application/json
+
+{
+  "requests": [
+    {
+      "id": "t-1",
+      "method": "POST",
+      "url": "Travellers",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "firstName": "Carlos",
+        "lastName": "Rivera",
+        "email": "carlos.rivera@company.com",
+        "phone": "+1-555-111-2222",
+        "userID": "carlos.rivera@company.com",
+        "type_code": "STD",
+        "status_code": "ACT",
+        "addressType_code": "HOME"
+      }
+    },
+    {
+      "id": "loc-1",
+      "dependsOn": ["t-1"],
+      "method": "POST",
+      "url": "TravelledLocations",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "traveller_ID": "${{t-1.ID}}",
+        "destination_ID": "{{destinationId}}",
+        "travelFrom": "2025-01-05",
+        "travelTo": "2025-01-12",
+        "notes": "First trip — Dubai."
+      }
+    },
+    {
+      "id": "loc-2",
+      "dependsOn": ["t-1"],
+      "method": "POST",
+      "url": "TravelledLocations",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "traveller_ID": "${{t-1.ID}}",
+        "destination_ID": "{{destinationId}}",
+        "travelFrom": "2025-02-10",
+        "travelTo": "2025-02-17",
+        "notes": "Second trip — Singapore."
+      }
+    },
+    {
+      "id": "loc-3",
+      "dependsOn": ["t-1"],
+      "method": "POST",
+      "url": "TravelledLocations",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "traveller_ID": "${{t-1.ID}}",
+        "destination_ID": "{{destinationId}}",
+        "travelFrom": "2025-04-20",
+        "travelTo": "2025-04-28",
+        "notes": "Third trip — London."
+      }
+    }
+  ]
+}
+
+###
+
+### 8.3  Batch — Mixed valid and OVERLAPPING locations (expect 207)
+# loc-A and loc-B are valid; loc-C overlaps loc-A → 409 for loc-C only
+POST {{catalog}}/$batch
+Content-Type: application/json
+
+{
+  "requests": [
+    {
+      "id": "loc-A",
+      "method": "POST",
+      "url": "TravelledLocations",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "traveller_ID": "{{travellerId}}",
+        "destination_ID": "{{destinationId}}",
+        "travelFrom": "2025-07-01",
+        "travelTo": "2025-07-08",
+        "notes": "Valid trip A."
+      }
+    },
+    {
+      "id": "loc-B",
+      "method": "POST",
+      "url": "TravelledLocations",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "traveller_ID": "{{travellerId}}",
+        "destination_ID": "{{destinationId}}",
+        "travelFrom": "2025-08-10",
+        "travelTo": "2025-08-15",
+        "notes": "Valid trip B."
+      }
+    },
+    {
+      "id": "loc-C",
+      "method": "POST",
+      "url": "TravelledLocations",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "traveller_ID": "{{travellerId}}",
+        "destination_ID": "{{destinationId}}",
+        "travelFrom": "2025-07-05",
+        "travelTo": "2025-07-12",
+        "notes": "Overlaps trip A — expect 409 on this request only."
+      }
+    }
+  ]
+}
+
+###
+
+### 8.4  Batch — Batch read: multiple entities in one call
+POST {{catalog}}/$batch
+Content-Type: application/json
+
+{
+  "requests": [
+    {
+      "id": "r-1",
+      "method": "GET",
+      "url": "Travellers?$select=ID,firstName,lastName,fullName"
+    },
+    {
+      "id": "r-2",
+      "method": "GET",
+      "url": "Destinations?$select=ID,name,country"
+    },
+    {
+      "id": "r-3",
+      "method": "GET",
+      "url": "TravellerStatus"
+    }
+  ]
+}
+
+###
+
+
+### ============================================================
+###  SECTION 9 — OData V2 COMPATIBILITY
+### ============================================================
+
+### 9.1  V2 — Read Travellers
+GET {{catalog_v2}}/Travellers
+Accept: application/json
+
+###
+
+### 9.2  V2 — Read Destinations
+GET {{catalog_v2}}/Destinations
+Accept: application/json
+
+###
+
+### 9.3  V2 — Read with $expand
+GET {{catalog_v2}}/Travellers?$expand=locations
+Accept: application/json
+
+###
+
+### 9.4  V2 — Create Destination
+POST {{catalog_v2}}/Destinations
+Content-Type: application/json
+
+{
+  "name": "Berlin Mitte",
+  "country": "Germany",
+  "city": "Berlin",
+  "region": "Berlin",
+  "description": "Historic centre of the German capital."
+}
+
+###
+
+
+### ============================================================
+###  SECTION 10 — ADDITIONAL FILTERS & QUERIES
+### ============================================================
+
+### 10.1  Filter travellers by status
+GET {{catalog}}/Travellers?$filter=status_code eq 'ACT'
+Accept: application/json
+
+###
+
+### 10.2  Filter locations in date range
+GET {{catalog}}/TravelledLocations
+  ?$filter=travelFrom ge 2025-01-01 and travelTo le 2025-12-31
+  &$orderby=travelFrom asc
+Accept: application/json
+
+###
+
+### 10.3  Search destinations by country
+GET {{catalog}}/Destinations?$filter=country eq 'France'
+Accept: application/json
+
+###
+
+### 10.4  Top 5 most recent locations
+GET {{catalog}}/TravelledLocations
+  ?$orderby=travelFrom desc
+  &$top=5
+  &$expand=destination($select=name,city)
+Accept: application/json
+
+###
+
+### 10.5  Count travellers
+GET {{catalog}}/Travellers/$count
+Accept: text/plain
+
+###
+
+### 10.6  Count destinations
+GET {{catalog}}/Destinations/$count
+Accept: text/plain
+
+###

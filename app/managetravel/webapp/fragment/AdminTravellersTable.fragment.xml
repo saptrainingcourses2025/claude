@@ -1,0 +1,35 @@
+<core:FragmentDefinition xmlns="sap.m" xmlns:core="sap.ui.core">
+    <Table id="travellersTable"
+           items="{admin>/users}"
+           growing="true" growingThreshold="20"
+           class="sapUiResponsiveMargin" width="auto">
+        <headerToolbar>
+            <OverflowToolbar>
+                <Title text="Travellers ({= ${admin>/users}.length })" level="H3"/>
+                <ToolbarSpacer/>
+                <SearchField width="18rem" liveChange=".onFilterTravellers"/>
+            </OverflowToolbar>
+        </headerToolbar>
+        <columns>
+            <Column><Text text="Name"/></Column>
+            <Column><Text text="Email"/></Column>
+            <Column><Text text="Role"/></Column>
+            <Column><Text text="Status"/></Column>
+            <Column hAlign="Center"><Text text="Lock / Unlock"/></Column>
+        </columns>
+        <items>
+            <ColumnListItem>
+                <cells>
+                    <Text text="{admin>name}"/>
+                    <Text text="{admin>email}"/>
+                    <Text text="{admin>role}"/>
+                    <ObjectStatus text="{= ${admin>locked} ? 'Locked' : 'Active' }"
+                                  state="{= ${admin>locked} ? 'Error' : 'Success' }"/>
+                    <Switch state="{= !${admin>locked} }"
+                            customTextOn="On" customTextOff="Off"
+                            change=".onToggleLock"/>
+                </cells>
+            </ColumnListItem>
+        </items>
+    </Table>
+</core:FragmentDefinition>

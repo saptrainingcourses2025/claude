@@ -25,8 +25,14 @@ entity Roles : sap.common.CodeList {
     key code : String(10); // ADMIN, TRAVELLER, AGENT
 }
 
+entity TravellerTypes : sap.common.CodeList {
+    @title: '{i18n>TravellerTypeCode}'
+    key code : String(10); // FF=Frequent Flyer, EX=Executive, ST=Standard
+}
+
 // ─── Type Definitions ─────────────────────────────────────────────────────────
 
-type AddressType : Association to AddressTypes;
-type Status      : Association to TravellerStatus;
-type Role        : Association to Roles;
+type AddressType   : Association to AddressTypes;
+type Status        : Association to TravellerStatus;
+type Role          : Association to Roles;
+type TravellerType : Association to TravellerTypes;

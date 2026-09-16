@@ -1,94 +1,138 @@
 namespace anubhav.claude;
 
-using { cuid, Currency, managed }                                            from '@sap/cds/common';
-using { anubhav.claude.AddressType, anubhav.claude.Status, anubhav.claude.Roles } from './common';
+using { cuid, managed, Currency }  from '@sap/cds/common';
+using {
+    anubhav.claude.AddressTypes,
+    anubhav.claude.TravellerStatus,
+    anubhav.claude.TravellerTypes,
+    anubhav.claude.Roles
+} from './common';
 
-// ─── Main Entities ────────────────────────────────────────────────────────────
+// ─── Destinations ─────────────────────────────────────────────────────────────
 
 entity Destinations : cuid {
-    @title: '{i18n>DestinationAddress}'
-    address    : String(255);
-    @title: '{i18n>City}'
-    city       : String(40);
-    @title: '{i18n>PostalCode}'
-    postalCode : String(8);
+    @mandatory
+    @title: '{i18n>DestinationName}'
+    name        : String(200);
+    @mandatory
     @title: '{i18n>Country}'
-    country    : String(40);
-    @title: '{i18n>Traveller}'
-    traveller  : Association to Travellers;
+    country     : String(100);
+    @mandatory
+    @title: '{i18n>City}'
+    city        : String(100);
+    @title: '{i18n>Region}'
+    region      : String(100);
+    @title: '{i18n>Description}'
+    description : LargeString;
 }
+
+// ─── Travellers ───────────────────────────────────────────────────────────────
 
 entity Travellers : cuid, managed {
     @mandatory
-    @title: '{i18n>UserName}'
-    userName  : String(255);
     @title: '{i18n>FirstName}'
-    firstName : String(255);
+    firstName   : String(80);
+    @mandatory
     @title: '{i18n>LastName}'
-    lastName  : String(255);
-    @title: '{i18n>Contacts}'
-    contacts  : Composition of many Contacts  on contacts.traveller  = $self;
-    @title: '{i18n>Gender}'
-    gender    : String(10);
-    @title: '{i18n>Age}'
-    age       : Integer;
+    lastName    : String(80);
+    @Core.Computed
+    @title: '{i18n>FullName}'
+    virtual fullName : String(160);
+    @mandatory
+    @title: '{i18n>Email}'
+    email       : String(120);
+    @title: '{i18n>Phone}'
+    phone       : String(20);
+    @title: '{i18n>AddressType}'
+    addressType : Association to AddressTypes;
+    @mandatory
+    @title: '{i18n>TravellerType}'
+    type        : Association to TravellerTypes;
+    @mandatory
     @title: '{i18n>Status}'
-    status    : Status default 'A';
-    @title: '{i18n>CreatedBy}'
-    createdBy : String(40);
-    @title: '{i18n>Address}'
-    address   : Composition of Destinations;
-    @title: '{i18n>Vacations}'
-    vacations : Composition of many Vacations on vacations.traveller = $self;
+    status      : Association to TravellerStatus default 'A';
+    @mandatory
+    @title: '{i18n>UserID}'
+    userID      : String(100);
+    @title: '{i18n>Locations}'
+    locations   : Composition of many TravelledLocations on locations.traveller = $self;
+    @title: '{i18n>Addresses}'
+    addresses   : Composition of many Addresses on addresses.traveller = $self;
 }
 
 annotate Travellers with {
     modifiedAt @odata.etag;
 }
 
-entity Contacts : cuid {
-    @title: '{i18n>ContactType}'
-    type      : AddressType;
-    @title: '{i18n>ContactAddress}'
-    address   : String(255);
-    @title: '{i18n>Traveller}'
-    traveller : Association to Travellers;
-}
+// ─── TravelledLocations ───────────────────────────────────────────────────────
 
-entity Vacations : cuid {
-    @title: '{i18n>VacationName}'
-    name        : String(255);
-    @title: '{i18n>Budget}'
-    budget      : Decimal(10, 2);
+entity TravelledLocations : cuid {
+    @title: '{i18n>Traveller}'
+    traveller   : Association to Travellers;
+    @title: '{i18n>Destination}'
+    destination : Association to Destinations;
+    @mandatory
+    @title: '{i18n>TravelFrom}'
+    travelFrom  : Date;
+    @mandatory
+    @title: '{i18n>TravelTo}'
+    travelTo    : Date;
+    @title: '{i18n>Cost}'
+    @Measures.ISOCurrency: currency.code
+    cost        : Decimal(15, 2);
     @title: '{i18n>Currency}'
     currency    : Currency;
-    @title: '{i18n>Description}'
-    description : String(1024);
-    @title: '{i18n>StartsAt}'
-    startsAt    : DateTime;
-    @title: '{i18n>EndsAt}'
-    endsAt      : DateTime;
-    @title: '{i18n>Traveller}'
-    traveller   : Association to Travellers;
+    @title: '{i18n>Notes}'
+    notes       : LargeString;
 }
 
-// ─── User Entity ──────────────────────────────────────────────────────────────
+// ─── Addresses ────────────────────────────────────────────────────────────────
 
-entity AppUsers : cuid, managed {
-    @mandatory
-    @title: '{i18n>UserName}'
-    userName    : String(100);
-    @mandatory
-    @title: '{i18n>Email}'
-    email       : String(255);
-    @title: '{i18n>FullName}'
-    fullName    : String(255);
-    @title: '{i18n>Role}'
-    role        : Association to Roles;
-    @title: '{i18n>IsActive}'
-    isActive    : Boolean default true;
-    @title: '{i18n>LastLoginAt}'
-    lastLoginAt : DateTime;
+entity Addresses : cuid {
     @title: '{i18n>Traveller}'
     traveller   : Association to Travellers;
+    @title: '{i18n>AddressType}'
+    addressType : Association to AddressTypes;
+    @mandatory
+    @title: '{i18n>Street}'
+    street      : String(120);
+    @mandatory
+    @title: '{i18n>City}'
+    city        : String(100);
+    @title: '{i18n>PostalCode}'
+    postalCode  : String(20);
+    @title: '{i18n>Country}'
+    country     : String(100);
+    @title: '{i18n>IsPrimary}'
+    isPrimary   : Boolean default false;
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+entity Users : cuid {
+    @mandatory
+    @title: '{i18n>LoginName}'
+    loginName : String(120);
+    @mandatory
+    @title: '{i18n>FirstName}'
+    firstName : String(80);
+    @mandatory
+    @title: '{i18n>LastName}'
+    lastName  : String(80);
+    @title: '{i18n>IsLocked}'
+    isLocked  : Boolean default false;
+    @cds.on.insert: $now
+    @title: '{i18n>CreatedAt}'
+    createdAt : Timestamp;
+    @title: '{i18n>UserRoles}'
+    roles     : Composition of many UserRoles on roles.user = $self;
+}
+
+// ─── UserRoles ────────────────────────────────────────────────────────────────
+
+entity UserRoles : cuid {
+    @title: '{i18n>User}'
+    user : Association to Users;
+    @title: '{i18n>Role}'
+    role : Association to Roles;
 }

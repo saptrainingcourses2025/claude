@@ -1,0 +1,176 @@
+### ============================================================
+###  ROLE-BASED ACCESS TESTER
+###  Anubhav Trainings | CAP | JWT Auth | Role-Based @restrict
+### ============================================================
+###  How to use:
+###    1. Run the "ADMIN — login" request → copy `access` token
+###       from response into the @adminJwt variable below.
+###    2. Run the "USER — login" request → copy `access` token
+###       into the @userJwt variable below.
+###    3. Fire the catalog / user-management calls.
+### ============================================================
+
+### ── VARIABLES ──────────────────────────────────────────────
+@base       = http://localhost:4004/odata/v4
+@catalog    = {{base}}/catalog
+@usermgmt   = {{base}}/user-management
+@auth       = {{base}}/auth
+
+### Paste the tokens you receive from the two login calls here
+@adminJwt   = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZTU5YTY4YS1kZDIxLTQ1MmYtOTlhMy1kYTgzODJmMTg0MGUiLCJyb2xlcyI6WyJBRE1JTiJdLCJpYXQiOjE3Nzg3Mzc1MjksImV4cCI6MTc3ODczODQyOSwiYXVkIjoiYWNjZXNzIn0.5s9BDGgehyzTBjyU9JvBAyl_FuUE4YSpTqC34LDe8Fg
+@userJwt    = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjNWM1YzVjNS0wMDA2LTQ1NTUtODU1NS01NTU1NTU1NTU1MDYiLCJyb2xlcyI6WyJUUkFWRUxMRVIiXSwiaWF0IjoxNzc4NzM3NjUwLCJleHAiOjE3Nzg3Mzg1NTAsImF1ZCI6ImFjY2VzcyJ9.Ggd6RwGZEv4u4oAv5L7vFgLOGc-DynaswNhlFaStU2A
+
+### A traveller-role user that already exists in seed data
+@userLogin  = raj.sharma@example.com
+
+### ============================================================
+###  PART 1 — ADMIN FLOW
+### ============================================================
+
+### 1.1  ADMIN — login (default admin created by user-init)
+# @name adminLogin
+POST {{auth}}/login
+Content-Type: application/json
+
+{
+  "loginName": "anubhav@anubhavtrainings.com",
+  "password":  "Welcome1!"
+}
+
+###
+
+### 1.2  ADMIN — who am I (verifies JWT + ADMIN role)
+GET {{auth}}/me
+Authorization: Bearer {{adminJwt}}
+
+###
+
+### 1.3  ADMIN — read ALL Travellers (admin sees every row)
+GET {{catalog}}/Travellers
+Authorization: Bearer {{adminJwt}}
+Accept: application/json
+
+###
+
+### 1.4  ADMIN — read ALL TravelledLocations (admin sees every row)
+GET {{catalog}}/TravelledLocations?$expand=traveller($select=firstName,lastName,userID)
+Authorization: Bearer {{adminJwt}}
+Accept: application/json
+
+###
+
+### 1.5  ADMIN — read Destinations (admin can read & write)
+GET {{catalog}}/Destinations
+Authorization: Bearer {{adminJwt}}
+Accept: application/json
+
+###
+
+
+### ============================================================
+###  PART 2 — TRAVELLER (regular user) FLOW
+### ============================================================
+
+### 2.1  USER — login (a TRAVELLER-role user from seed data)
+# @name userLogin
+POST {{auth}}/login
+Content-Type: application/json
+
+{
+  "loginName": "raj.sharma@example.com",
+  "password":  "Welcome1!"
+}
+
+###
+
+### 2.2  USER — who am I (verifies JWT + TRAVELLER role)
+GET {{auth}}/me
+Authorization: Bearer {{userJwt}}
+
+###
+
+### 2.3  USER — read Travellers (only own row visible)
+GET {{catalog}}/Travellers
+Authorization: Bearer {{userJwt}}
+Accept: application/json
+
+###
+
+### 2.4  USER — read TravelledLocations (only own trips visible)
+GET {{catalog}}/TravelledLocations
+Authorization: Bearer {{userJwt}}
+Accept: application/json
+
+###
+
+### 2.5  USER — read Destinations (allowed for any authenticated user)
+GET {{catalog}}/Destinations
+Authorization: Bearer {{userJwt}}
+Accept: application/json
+
+###
+
+### 2.6  USER — anonymous call to Travellers → expect 401
+GET {{catalog}}/Travellers
+Accept: application/json
+
+###
+
+### 2.7  USER — Traveller hitting user-management → expect 403
+GET {{usermgmt}}/Users
+Authorization: Bearer {{userJwt}}
+Accept: application/json
+
+###
+
+
+### ============================================================
+###  PART 3 — ADMIN HITS USER-MANAGEMENT
+### ============================================================
+
+### 3.1  ADMIN — list Users
+GET {{usermgmt}}/Users?$expand=roles($expand=role)
+Authorization: Bearer {{adminJwt}}
+Accept: application/json
+
+###
+
+### 3.2  ADMIN — list Roles (code list)
+GET {{usermgmt}}/Roles
+Authorization: Bearer {{adminJwt}}
+Accept: application/json
+
+###
+
+### 3.3  ADMIN — createUser action
+POST {{usermgmt}}/createUser
+Authorization: Bearer {{adminJwt}}
+Content-Type: application/json
+
+{
+  "firstName": "Test",
+  "lastName":  "Agent",
+  "email":     "test.agent@anubhav.com",
+  "roleId":    "AGENT"
+}
+
+###
+
+### 3.4  ADMIN — assignRole action
+POST {{usermgmt}}/assignRole
+Authorization: Bearer {{adminJwt}}
+Content-Type: application/json
+
+{
+  "userId": "c5c5c5c5-0002-4555-8555-555555555502",
+  "roleId": "ADMIN"
+}
+
+###
+
+### 3.5  ADMIN — lockUser function
+GET {{usermgmt}}/lockUser(userId='c5c5c5c5-0002-4555-8555-555555555502')
+Authorization: Bearer {{adminJwt}}
+Accept: application/json
+
+###

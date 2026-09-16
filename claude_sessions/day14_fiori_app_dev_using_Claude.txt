@@ -1,0 +1,2937 @@
+ ▐▛███▜▌   Claude Code v2.1.141
+▝▜█████▛▘  Opus 4.7 · Claude Pro
+  ▘▘ ▝▝    C:\claude\anubhav-claude
+
+❯ /rename 14_fiori_development_using_claude 
+  ⎿  Session renamed to: 14_fiori_development_using_claude
+
+❯ please refer the spec @.claude/specs/fiori_dev_spec.md to design and develop  
+  the freestyle fiori app in app folder on top of services provided in @srv. do 
+   not add new service endpoints until approved. check the acceptence criteria  
+  at the end.                                                                   
+  ⎿  Read .claude\specs\fiori_dev_spec.md (294 lines)
+  ⎿  Listed directory srv\
+
+● I'll start by exploring the existing services and app folder to understand
+  what I'm building on top of, then design the Fiori app per the spec.
+
+  Read 16 files, listed 2 directories (ctrl+o to expand)
+
+● I've reviewed the spec and the actual backend. There are some important
+  mismatches between what the spec assumes and what the CAP services actually
+  expose. Let me lay these out, because several acceptance criteria can't be met
+   against the current backend without changes — and you asked me not to add
+  endpoints without approval.
+
+  Key findings (spec assumption → backend reality):
+
+  ┌──────────────┬─────────────────────┬───────────────────────────────────┐
+  │     Area     │    Spec assumes     │          Backend reality          │
+  ├──────────────┼─────────────────────┼───────────────────────────────────┤
+  │              │                     │ Separate Users + UserCredentials  │
+  │ Auth         │ password/role/statu │ + UserRoles. Travellers is the    │
+  │ identity     │ s on Travellers     │ business profile, linked by       │
+  │              │                     │ userID = email = Users.loginName  │
+  ├──────────────┼─────────────────────┼───────────────────────────────────┤
+  │ Login /      │ POST /auth/login,   │ ✅ Exist (note me is an OData V4  │
+  │ refresh / me │ /auth/refresh, GET  │ function → GET /auth/me())        │
+  │              │ /auth/me            │                                   │
+  ├──────────────┼─────────────────────┼───────────────────────────────────┤
+  │              │ PATCH               │ Lives on Users.isLocked; admin    │
+  │ Lock/unlock  │ /catalog/Travellers │ uses UserManagement.lockUser/unlo │
+  │              │  status             │ ckUser (ADMIN-only) ✅ available  │
+  ├──────────────┼─────────────────────┼───────────────────────────────────┤
+  │              │ POST                │ ❌ Impossible — no password/role  │
+  │ Self-registe │ /catalog/Travellers │ on Travellers; createUser is      │
+  │ r            │  (role/status)      │ ADMIN-only; AuthService has no    │
+  │              │                     │ public register action            │
+  ├──────────────┼─────────────────────┼───────────────────────────────────┤
+  │ Spend donut  │ SUM(amount) on      │ ❌ No amount/spend field exists   │
+  │              │ TravelledLocations  │ anywhere                          │
+  ├──────────────┼─────────────────────┼───────────────────────────────────┤
+  │ Addresses    │ Editable addresses  │ ❌ No Addresses entity — only an  │
+  │ tab          │ table               │ addressType codelist + phone on   │
+  │              │                     │ Travellers                        │
+  └──────────────┴─────────────────────┴───────────────────────────────────┘
+
+  The
+  login/JWT/cookie/routing/logout/branding/Travelled-Locations-CRUD/single-Save
+  parts (AC #1, 2, 6, 9–16) map cleanly to the existing services. But AC #3–5
+  (self-register), #7 (spend donut), and #8 (addresses tab) need decisions
+  before I build. Let me confirm direction:
+
+● User answered Claude's questions:
+  ⎿  · Where should the TravelHub app live? There's already an 
+     `app/managetravel` Fiori-tools scaffold in the repo. → Reuse 
+     app/managetravel
+     · Self-registration (AC #3–5) requires creating a login, but no public 
+     register endpoint exists (createUser is ADMIN-only; AuthService has none). 
+     How should I handle it? → Approve public register action
+     · The spend donut (AC #7) needs a spend amount, but TravelledLocations has 
+     no amount field. How should the donut be sourced? → Trips per destination 
+     (Recommended)
+     · The Addresses tab (AC #8) has no backing entity (only an addressType 
+     codelist + phone on Travellers). How should it work? → Profile-edit tab 
+     (Recommended)
+
+● Decisions noted: reuse app/managetravel, approve a public register action on
+  AuthService, donut = trips-per-destination count, Addresses tab =
+  profile-edit. Let me inspect the existing scaffold so I repurpose it
+  consistently.
+
+  Read 10 files (ctrl+o to expand)
+
+● The existing app is anubhav.claude.managetravel on UI5 1.148. Before writing
+  frontend code I need the exact backend URLs — let me check the .http test
+  files and config.
+
+  Read 16 files, listed 1 directory (ctrl+o to expand)
+
+● I now have the full picture: confirmed backend URLs (/odata/v4/auth,
+  /odata/v4/catalog, /odata/v4/user-management), seed accounts (all seed users
+  password Welcome1!; admins
+  superadmin@anubhav.com/anubhav@anubhavtrainings.com, travellers like
+  raj.sharma@example.com), and the entity shapes. Building now.
+
+  Step 1 — Add the approved public register action to AuthService.
+
+● Update(srv\auth-service.cds)
+  ⎿  Added 18 lines
+      14          roles     : array of String;
+      15      }
+      16  
+      17 +    type RegisterResponse {                                    
+      18 +        userID  : String;                                      
+      19 +        loginName : String;                                    
+      20 +        locked  : Boolean;                                     
+      21 +        message : String;                                      
+      22 +    }                                                          
+      23 +                                                               
+      24      action   login(loginName: String, password: String) returns
+           LoginResponse;
+      25      action   refresh(refreshToken: String)              returns
+           LoginResponse;
+      26      function me()                                       returns
+           UserInfo;
+      27 +                                                               
+      28 +    // Public self-registration. Creates a TRAVELLER login + pr
+         +ofile,                                                         
+      29 +    // locked until an admin unlocks it.                       
+      30 +    action   register(                                         
+      31 +        firstName : String,                                    
+      32 +        lastName  : String,                                    
+      33 +        email     : String,                                    
+      34 +        password  : String,                                    
+      35 +        phone     : String,                                    
+      36 +        addressType : String                                   
+      37 +    ) returns RegisterResponse;                                
+      38  }
+
+● Update(srv\handlers\auth.handler.js)
+  ⎿  Added 4 lines
+       1 +const cds = require('@sap/cds');                               
+       2  const jwt = require('../auth/jwt');
+       3  const password = require('../auth/password');
+       4  
+       5  const Users           = 'anubhav.claude.Users';
+       6  const UserCredentials = 'anubhav.claude.UserCredentials';
+       7  const UserRoles       = 'anubhav.claude.UserRoles';
+       8 +const Travellers      = 'anubhav.claude.Travellers';           
+       9  
+      10 +const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;                 
+      11 +                                                               
+      12  const loadRoles = async (userId) => {
+      13      const rows = await SELECT.from(UserRoles).where({ user_ID: 
+          userId });
+      14      return rows.map((r) => r.role_code);
+
+● Update(srv\handlers\auth.handler.js)
+  ⎿  Added 62 lines
+       72          return { access, refresh: newRefresh, expiresIn: jwt.a
+           ccessTtlSeconds };
+       73      });
+       74  
+       75 +    // ─── register ──────────────────────────────────────────
+          +────────────────────                                          
+       76 +    // Public self-registration: creates a TRAVELLER login + T
+          +ravellers profile,                                            
+       77 +    // locked (isLocked = true) until an admin unlocks the acc
+          +ount.                                                         
+       78 +    srv.on('register', async (req) => {                       
+       79 +        const { firstName, lastName, email, password: plain, p
+          +hone, addressType } = req.data;                               
+       80 +                                                              
+       81 +        if (!firstName?.trim() || !lastName?.trim()) {        
+       82 +            return req.error(400, 'First name and last name ar
+          +e required');                                                 
+       83 +        }                                                     
+       84 +        if (!email || !EMAIL_RE.test(email)) {                
+       85 +            return req.error(400, 'A valid email is required')
+          +;                                                             
+       86 +        }                                                     
+       87 +        if (!plain || plain.length < 8) {                     
+       88 +            return req.error(400, 'Password must be at least 8
+          + characters');                                                
+       89 +        }                                                     
+       90 +                                                              
+       91 +        const loginName = email.trim().toLowerCase();         
+       92 +                                                              
+       93 +        const existingUser = await SELECT.one.from(Users).wher
+          +e({ loginName });                                             
+       94 +        if (existingUser) return req.error(409, 'Email already
+          + registered');                                                
+       95 +                                                              
+       96 +        const existingTrav = await SELECT.one.from(Travellers)
+          +.where({ email: loginName });                                 
+       97 +        if (existingTrav) return req.error(409, 'Email already
+          + registered');                                                
+       98 +                                                              
+       99 +        const userId       = cds.utils.uuid();                
+      100 +        const passwordHash = await password.hash(plain);      
+      101 +                                                              
+      102 +        await INSERT.into(Users).entries({                    
+      103 +            ID:        userId,                                
+      104 +            loginName,                                        
+      105 +            firstName: firstName.trim(),                      
+      106 +            lastName:  lastName.trim(),                       
+      107 +            isLocked:  true,            // locked until an adm
+          +in unlocks                                                    
+      108 +        });                                                   
+      109 +        await INSERT.into(UserCredentials).entries({          
+      110 +            user_ID:        userId,                           
+      111 +            passwordHash,                                     
+      112 +            failedAttempts: 0,                                
+      113 +        });                                                   
+      114 +        await INSERT.into(UserRoles).entries({                
+      115 +            user_ID:   userId,                                
+      116 +            role_code: 'TRAVELLER',                           
+      117 +        });                                                   
+      118 +        await INSERT.into(Travellers).entries({               
+      119 +            firstName:        firstName.trim(),               
+      120 +            lastName:         lastName.trim(),                
+      121 +            email:            loginName,                      
+      122 +            userID:           loginName,                      
+      123 +            phone:            phone || null,                  
+      124 +            type_code:        'ST',                           
+      125 +            status_code:      'A',                            
+      126 +            addressType_code: addressType || 'H',             
+      127 +        });                                                   
+      128 +                                                              
+      129 +        return {                                              
+      130 +            userID:    userId,                                
+      131 +            loginName,                                        
+      132 +            locked:    true,                                  
+      133 +            message:   'Registration successful. An admin must
+          + unlock your account before first login.',                    
+      134 +        };                                                    
+      135 +    });                                                       
+      136 +                                                              
+      137      // ─── me ────────────────────────────────────────────────
+           ───────────────────
+      138      srv.on('me', async (req) => {
+      139          const id = req.user && req.user.id;
+
+● Validate the backend still compiles with the new action:
+
+● Bash(npx cds compile srv 2>&1 | tail -20)
+  ⎿            "length": 1000
+             },
+             "code": {
+     … +17 lines (ctrl+o to expand)
+
+● Step 2 — Rewrite the app manifest (dataSources for catalog + user-management,
+  JSON-driven routing for login/admin/traveller, add sap.viz):
+
+● Write(app\managetravel\webapp\manifest.json)  ⎿  Added 54 lines, removed 39 lines
+       9      },
+      10      "title": "{{appTitle}}",
+      11      "description": "{{appDescription}}",
+      12 -    "resources": "resources.json",                             
+      13 -    "sourceTemplate": {                                        
+      14 -      "id": "@sap/generator-fiori:basic",                      
+      15 -      "version": "1.13.6",                                     
+      16 -      "toolsId": "cdeb9278-bafd-4d32-b739-5acf41e709b2"        
+      17 -    },                                                         
+      12      "dataSources": {
+      19 -      "mainService": {                                         
+      20 -        "uri": "/odata/v4/auth/",                              
+      13 +      "catalog": {                                             
+      14 +        "uri": "/odata/v4/catalog/",                           
+      15          "type": "OData",
+      16          "settings": {
+      23 -          "annotations": [],                                   
+      17            "odataVersion": "4.0"
+      18          }
+      19 +      },                                                       
+      20 +      "usermgmt": {                                            
+      21 +        "uri": "/odata/v4/user-management/",                   
+      22 +        "type": "OData",                                       
+      23 +        "settings": {                                          
+      24 +          "odataVersion": "4.0"                                
+      25 +        }                                                      
+      26        }
+      27      }
+      28    },
+      29    "sap.ui": {
+      30      "technology": "UI5",
+      31 -    "icons": {                                                 
+      32 -      "icon": "",                                              
+      33 -      "favIcon": "",                                           
+      34 -      "phone": "",                                             
+      35 -      "phone@2": "",                                           
+      36 -      "tablet": "",                                            
+      37 -      "tablet@2": ""                                           
+      38 -    },                                                         
+      31      "deviceTypes": {
+      32        "desktop": true,
+      33        "tablet": true,
+     ...
+      35      }
+      36    },
+      37    "sap.ui5": {
+      46 -    "flexEnabled": true,                                       
+      38 +    "flexEnabled": false,                                      
+      39      "dependencies": {
+      40        "minUI5Version": "1.148.0",
+      41        "libs": {
+      42          "sap.m": {},
+      43          "sap.ui.core": {},
+      52 -        "sap.f": {},                                           
+      53 -        "sap.suite.ui.generic.template": {},                   
+      54 -        "sap.ui.comp": {},                                     
+      55 -        "sap.ui.generic.app": {},                              
+      56 -        "sap.ui.table": {},                                    
+      57 -        "sap.ushell": {}                                       
+      44 +        "sap.ui.layout": {},                                   
+      45 +        "sap.viz": {}                                          
+      46        }
+      47      },
+      48      "contentDensities": {
+     ...
+      57          }
+      58        },
+      59        "": {
+      72 -        "dataSource": "mainService",                           
+      73 -        "preload": true,                                       
+      60 +        "dataSource": "catalog",                               
+      61 +        "preload": false,                                      
+      62          "settings": {
+      63            "operationMode": "Server",
+      64            "autoExpandSelect": true,
+      77 -          "earlyRequests": true                                
+      65 +          "earlyRequests": false,                              
+      66 +          "groupId": "$auto"                                   
+      67          }
+      68 +      },                                                       
+      69 +      "mgmt": {                                                
+      70 +        "dataSource": "usermgmt",                              
+      71 +        "preload": false,                                      
+      72 +        "settings": {                                          
+      73 +          "operationMode": "Server",                           
+      74 +          "autoExpandSelect": true,                            
+      75 +          "earlyRequests": false,                              
+      76 +          "groupId": "$auto"                                   
+      77 +        }                                                      
+      78        }
+      79      },
+      80      "resources": {
+     ...
+       90          "viewType": "XML",
+       91          "async": true,
+       92          "viewPath": "anubhav.claude.managetravel.view",
+       93 +        "controlId": "mainNav",                               
+       94          "controlAggregation": "pages",
+       95 -        "controlId": "app",                                   
+       95          "clearControlAggregation": false
+       96        },
+       97        "routes": [
+       98          {
+      100 -          "name": "RouteMain",                                
+      101 -          "pattern": ":?query:",                              
+      102 -          "target": [                                         
+      103 -            "TargetMain"                                      
+      104 -          ]                                                   
+       99 +          "name": "login",                                    
+      100 +          "pattern": "",                                      
+      101 +          "target": ["login"]                                 
+      102 +        },                                                    
+      103 +        {                                                     
+      104 +          "name": "adminDashboard",                           
+      105 +          "pattern": "admin",                                 
+      106 +          "target": ["adminDashboard"]                        
+      107 +        },                                                    
+      108 +        {                                                     
+      109 +          "name": "travellerDashboard",                       
+      110 +          "pattern": "traveller",                             
+      111 +          "target": ["travellerDashboard"]                    
+      112          }
+      113        ],
+      114        "targets": {
+      108 -        "TargetMain": {                                       
+      109 -          "viewType": "XML",                                  
+      110 -          "transition": "slide",                              
+      111 -          "clearControlAggregation": false,                   
+      112 -          "viewId": "Main",                                   
+      113 -          "viewName": "Main"                                  
+      115 +        "login": {                                            
+      116 +          "viewId": "login",                                  
+      117 +          "viewName": "Login",                                
+      118 +          "transition": "show"                                
+      119 +        },                                                    
+      120 +        "adminDashboard": {                                   
+      121 +          "viewId": "adminDashboard",                         
+      122 +          "viewName": "AdminDashboard",                       
+      123 +          "transition": "slide"                               
+      124 +        },                                                    
+      125 +        "travellerDashboard": {                               
+      126 +          "viewId": "travellerDashboard",                     
+      127 +          "viewName": "TravellerDashboard",                   
+      128 +          "transition": "slide"                               
+      129          }
+      130        }
+      131      },
+
+● Step 3 — BaseController.js (all shared logic: cookies, JWT, ajax+refresh,
+  login, logout, role guard):
+
+● Write(app\managetravel\webapp\controller\BaseController.js)
+  ⎿  Wrote 279 lines to
+     app\managetravel\webapp\controller\BaseController.js
+       2     "sap/ui/core/mvc/Controller",
+       3     "sap/ui/core/UIComponent",
+       4     "sap/ui/model/json/JSONModel",
+       5     "sap/m/MessageBox",
+       6     "sap/ui/thirdparty/jquery"
+         ery) {ction (Controller, UIComponent, JSONModel, MessageBox, jQu
+       8     "use strict";
+       9 
+      10     // ── Constants ────────────────────────────────────────────
+         ────────────────
+     … +308 lines (ctrl+o to expand)
+
+● Step 4 — Component.js (startup cookie check + role-based initial route, AC
+  #11):
+
+● Write(app\managetravel\webapp\Component.js)
+  ⎿  Added 87 lines, removed 29 lines
+       1 -/**                                                            
+       2 - * eslint-disable @sap/ui5-jsdocs/no-jsdoc                     
+       3 - */                                                            
+       4 -                                                               
+       1  sap.ui.define([
+       6 -        "sap/ui/core/UIComponent",                             
+       7 -        "sap/ui/Device",                                       
+       8 -        "anubhav/claude/managetravel/model/models"             
+       9 -    ],                                                         
+      10 -    function (UIComponent, Device, models) {                   
+      11 -        "use strict";                                          
+       2 +    "sap/ui/core/UIComponent",                                 
+       3 +    "sap/ui/model/json/JSONModel",                             
+       4 +    "sap/ui/core/routing/HashChanger",                         
+       5 +    "anubhav/claude/managetravel/model/models"                 
+       6 +], function (UIComponent, JSONModel, HashChanger, models) {    
+       7 +    "use strict";                                              
+       8  
+      13 -        return UIComponent.extend("anubhav.claude.managetravel.
+         -Component", {                                                  
+      14 -            metadata: {                                        
+      15 -                manifest: "json"                               
+      16 -            },                                                 
+       9 +    function getCookie(sName) {                                
+      10 +        var aParts = document.cookie ? document.cookie.split(";
+         + ") : [];                                                      
+      11 +        for (var i = 0; i < aParts.length; i++) {              
+      12 +            var iEq = aParts[i].indexOf("=");                  
+      13 +            if (aParts[i].substring(0, iEq) === sName) {       
+      14 +                return decodeURIComponent(aParts[i].substring(i
+         +Eq + 1));                                                      
+      15 +            }                                                  
+      16 +        }                                                      
+      17 +        return undefined;                                      
+      18 +    }                                                          
+      19  
+      18 -            /**                                                
+      19 -             * The component is initialized by UI5 automaticall
+         -y during the startup of the app and calls the init method once.
+      20 -             * @public                                         
+      21 -             * @override                                       
+      22 -             */                                                
+      23 -            init: function () {                                
+      24 -                // call the base component's init function     
+      25 -                UIComponent.prototype.init.apply(this, argument
+         -s);                                                            
+      20 +    function decodeJwt(sToken) {                               
+      21 +        try {                                                  
+      22 +            var sPayload = sToken.split(".")[1].replace(/-/g, "
+         ++").replace(/_/g, "/");                                        
+      23 +            return JSON.parse(decodeURIComponent(escape(window.
+         +atob(sPayload))));                                             
+      24 +        } catch (e) {                                          
+      25 +            return null;                                       
+      26 +        }                                                      
+      27 +    }                                                          
+      28  
+      27 -                // enable routing                              
+      28 -                this.getRouter().initialize();                 
+      29 +    return UIComponent.extend("anubhav.claude.managetravel.Comp
+         +onent", {                                                      
+      30 +        metadata: {                                            
+      31 +            manifest: "json"                                   
+      32 +        },                                                     
+      33  
+      30 -                // set the device model                        
+      31 -                this.setModel(models.createDeviceModel(), "devi
+         -ce");                                                          
+      34 +        init: function () {                                    
+      35 +            UIComponent.prototype.init.apply(this, arguments); 
+      36 +                                                               
+      37 +            this.setModel(models.createDeviceModel(), "device")
+         +;                                                              
+      38 +                                                               
+      39 +            // Global user model — rebuilt from the th_user coo
+         +kie on refresh                                                 
+      40 +            var oUserModel = new JSONModel({});                
+      41 +            this.setModel(oUserModel, "userModel");            
+      42 +                                                               
+      43 +            var sTarget = this._resolveStartupRoute(oUserModel)
+         +;                                                              
+      44 +                                                               
+      45 +            // Land directly on the role dashboard when a sessi
+         +on cookie exists,                                              
+      46 +            // so a browser refresh preserves login (AC #11).  
+      47 +            if (sTarget) {                                     
+      48 +                HashChanger.getInstance().replaceHash(sTarget);
+      49              }
+      33 -        });                                                    
+      34 -    }                                                          
+      35 -);                                                             
+      50   No newline at end of file
+      51 +                                                               
+      52 +            this.getRouter().initialize();                     
+      53 +        },                                                     
+      54 +                                                               
+      55 +        // Returns the startup hash, or "" (login) when no usab
+         +le session exists.                                             
+      56 +        _resolveStartupRoute: function (oUserModel) {          
+      57 +            var sAccess  = getCookie("th_access");             
+      58 +            var sRefresh = getCookie("th_refresh");            
+      59 +            var sUserRaw = getCookie("th_user");               
+      60 +                                                               
+      61 +            if (!sUserRaw || (!sAccess && !sRefresh)) {        
+      62 +                return "";                                     
+      63 +            }                                                  
+      64 +                                                               
+      65 +            var oPayload = sAccess && decodeJwt(sAccess);      
+      66 +            var bAccessUsable = oPayload && oPayload.exp &&    
+      67 +                (oPayload.exp - 10) > Math.floor(Date.now() / 1
+         +000);                                                          
+      68 +                                                               
+      69 +            // Access expired and no refresh token → force fres
+         +h login.                                                       
+      70 +            if (!bAccessUsable && !sRefresh) {                 
+      71 +                return "";                                     
+      72 +            }                                                  
+      73 +                                                               
+      74 +            try {                                              
+      75 +                var o = JSON.parse(sUserRaw);                  
+      76 +                var bAdmin = o.role === "ADMIN";               
+      77 +                oUserModel.setData({                           
+      78 +                    id: o.id,                                  
+      79 +                    loginName: o.loginName,                    
+      80 +                    firstName: o.firstName,                    
+      81 +                    lastName: o.lastName,                      
+      82 +                    fullName: ((o.firstName || "") + " " + (o.l
+         +astName || "")).trim(),                                        
+      83 +                    roles: [o.role],                           
+      84 +                    role: o.role,                              
+      85 +                    isAdmin: bAdmin,                           
+      86 +                    isTraveller: !bAdmin                       
+      87 +                });                                            
+      88 +                return bAdmin ? "admin" : "traveller";         
+      89 +            } catch (e) {                                      
+      90 +                return "";                                     
+      91 +            }                                                  
+      92 +        }                                                      
+      93 +    });                                                        
+      94 +});                                                            
+
+● Step 5 — Shell (App view/controller) + Header fragment (reused first view +
+  branding, AC #13, #16):
+
+● Write(app\managetravel\webapp\view\App.view.xml)
+  ⎿  Added 16 lines, removed 5 lines
+       1  <mvc:View controllerName="anubhav.claude.managetravel.controlle
+          r.App"
+       2 -    xmlns:html="http://www.w3.org/1999/xhtml"                  
+       3 -    xmlns:mvc="sap.ui.core.mvc" displayBlock="true"            
+       4 -    xmlns="sap.m">                                             
+       5 -    <App id="app">                                             
+       6 -    </App>                                                     
+       2 +          xmlns:mvc="sap.ui.core.mvc"                          
+       3 +          xmlns:core="sap.ui.core"                             
+       4 +          xmlns="sap.m"                                        
+       5 +          displayBlock="true">                                 
+       6 +    <Shell>                                                    
+       7 +        <App id="appRoot">                                     
+       8 +            <pages>                                            
+       9 +                <Page id="shellPage" showHeader="false">       
+      10 +                    <content>                                  
+      11 +                        <core:Fragment fragmentName="anubhav.cl
+         +aude.managetravel.fragment.Header" type="XML"/>                
+      12 +                        <NavContainer id="mainNav"/>           
+      13 +                    </content>                                 
+      14 +                </Page>                                        
+      15 +            </pages>                                           
+      16 +        </App>                                                 
+      17 +    </Shell>                                                   
+      18  </mvc:View>
+
+● Write(app\managetravel\webapp\controller\App.controller.js)
+  ⎿  Added 11 lines, removed 13 lines
+       1 -sap.ui.define(                                                 
+       2 -    [                                                          
+       3 -        "sap/ui/core/mvc/Controller"                           
+       4 -    ],                                                         
+       5 -    function(BaseController) {                                 
+       6 -      "use strict";                                            
+       7 -                                                               
+       8 -      return BaseController.extend("anubhav.claude.managetravel
+         -.controller.App", {                                            
+       9 -        onInit: function() {                                   
+       1 +sap.ui.define([                                                
+       2 +    "anubhav/claude/managetravel/controller/BaseController"    
+       3 +], function (BaseController) {                                 
+       4 +    "use strict";                                              
+       5 +                                                               
+       6 +    return BaseController.extend("anubhav.claude.managetravel.c
+         +ontroller.App", {                                              
+       7 +        onInit: function () {                                  
+       8 +            // Shell controller — owns the persistent Header (l
+         +ogout lives here,                                              
+       9 +            // so every routed page inherits it). Routing handl
+         +ed per-view.                                                   
+      10          }
+      11 -      });                                                      
+      12 -    }                                                          
+      13 -  );                                                           
+      14 -                                                               
+      11   No newline at end of file
+      12 +    });                                                        
+      13 +});                                                            
+
+● Write(app\managetravel\webapp\fragment\Header.fragment.xml)
+  ⎿  Wrote 17 lines to app\managetravel\webapp\fragment\Header.fragment.xml
+       2     <Bar design="Header">xmlns="sap.m" xmlns:core="sap.ui.core">
+       3         <contentLeft>
+         coins/200x200/37581.png"https://s2.coinmarketcap.com/static/img/
+       5                    width="2.5rem" height="2.5rem" class="sapUiTi
+         nyMarginEnd"/>
+         2"/>        <Title text="Anubhav Trainings — TravelHub" level="H
+       7         </contentLeft>
+       9             <Text text="{userModel>/fullName} ({userModel>/role}
+         )"
+      10                   visible="{= !!${userModel>/loginName} }"
+     … +9 lines (ctrl+o to expand)
+
+● Step 6 — Login view/controller + RegisterDialog fragment (AC #1, #2, #3, #4,
+  #5):
+
+● Write(app\managetravel\webapp\view\Login.view.xml)
+  ⎿  Wrote 35 lines to app\managetravel\webapp\view\Login.view.xml
+         .Login"ew controllerName="anubhav.claude.managetravel.controller
+       2           xmlns:mvc="sap.ui.core.mvc"
+       3           xmlns:l="sap.ui.layout"
+       4           xmlns:f="sap.ui.layout.form"
+       5           xmlns="sap.m"
+       7     <Page id="loginPage" showHeader="false" class="sapUiContentP
+         adding">
+       8         <content>
+       9             <l:VerticalLayout class="thLoginWrap" width="100%">
+      10                 <Panel class="thLoginCard" width="22rem">
+     … +37 lines (ctrl+o to expand)
+
+● Write(app\managetravel\webapp\fragment\RegisterDialog.fragment.xml)
+  ⎿  Wrote 33 lines to
+     app\managetravel\webapp\fragment\RegisterDialog.fragment.xml
+         xmlns:f="sap.ui.layout.form">s="sap.m" xmlns:core="sap.ui.core" 
+       2     <Dialog id="registerDialog" title="Register as Traveller" co
+       3         <content>">
+       4             <f:SimpleForm editable="true" layout="ResponsiveGrid
+       5                           labelSpanXL="12" labelSpanL="12" label
+         SpanM="12" labelSpanS="12"
+         ">                        columnsXL="1" columnsL="1" columnsM="1
+       7                 <f:content>
+       9                     <Input value="{reg>/firstName}"/>="true"/>
+      10                     <Label text="Last Name" required="true"/>
+     … +32 lines (ctrl+o to expand)
+
+● Write(app\managetravel\webapp\controller\Login.controller.js)
+  ⎿  Wrote 117 lines to
+     app\managetravel\webapp\controller\Login.controller.js
+       2     "anubhav/claude/managetravel/controller/BaseController",
+       3     "sap/ui/model/json/JSONModel",
+       4     "sap/m/MessageToast"
+       5 ], function (BaseController, JSONModel, MessageToast) {
+       6     "use strict";
+       7 
+       8     var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+       9 
+      10     return BaseController.extend("anubhav.claude.managetravel.co
+         ntroller.Login", {
+     … +122 lines (ctrl+o to expand)
+
+● Step 7 — Donut chart fragment (reused by both dashboards;
+  trips-per-destination, AC #7):
+
+● Write(app\managetravel\webapp\fragment\SpendDonutChart.fragment.xml)
+  ⎿  Wrote 26 lines to
+     app\managetravel\webapp\fragment\SpendDonutChart.fragment.xml
+       2         xmlns="sap.m"ion
+       3         xmlns:core="sap.ui.core"
+       4         xmlns:viz="sap.viz.ui5.controls"
+       5         xmlns:vizData="sap.viz.ui5.data"
+       6         xmlns:vizFeed="sap.viz.ui5.controls.common.feeds">
+         gin" width="auto">ext="{chart>/title}" class="sapUiResponsiveMar
+       8         <viz:VizFrame id="donutChart" vizType="donut" width="100
+         %" height="20rem"
+       9                       uiConfig="{applicationSet:'fiori'}">
+      10             <viz:dataset>
+     … +22 lines (ctrl+o to expand)
+
+● Plan mode is now active, so I'll stop making changes and capture the full
+  design as a plan for your approval. Note: a portion of the build was already
+  written before plan mode engaged — I'll document what's done and what remains.
+
+● Updated plan
+  ⎿  /plan to preview
+
+● User approved Claude's plan
+  ⎿  Plan saved to: ~\.claude\plans\prancy-percolating-lampson.md · /plan to 
+     edit
+     TravelHub Freestyle Fiori App — Implementation Plan
+
+     Context
+
+     The spec at .claude/specs/fiori_dev_spec.md describes a SAPUI5 freestyle
+     app ("TravelHub")
+     on top of the existing CAP services. During exploration I found the spec's
+     data
+     assumptions do not match the real backend, so the design adapts the spec to
+      the
+     actual services rather than implementing it verbatim.
+
+     Confirmed via srv/*.cds, handlers, .http test files and seed CSVs:
+
+     - AuthService /odata/v4/auth — POST login {loginName,password}, POST 
+     refresh {refreshToken},
+     GET me (Bearer). Returns {access,refresh,expiresIn} /
+     {id,loginName,firstName,lastName,roles[]}.
+     - CatalogService /odata/v4/catalog — Travellers, TravelledLocations,
+     Destinations,
+     TravellerStatus, AddressTypes, TravellerTypes. Row-level @restrict:
+     traveller sees
+     only own rows (userID = $user.email); ADMIN sees all.
+     - UserManagement /odata/v4/user-management (ADMIN only) — Users, Roles,
+     UserRoles,
+     functions lockUser/unlockUser(userId), actions
+     createUser/resetPassword/assignRole/unassignRole.
+     - Auth identity lives in Users+UserCredentials+UserRoles, not on
+     Travellers.
+     Travellers is the business profile linked by userID = email = 
+     Users.loginName.
+     - TravelledLocations has no amount/spend field. No Addresses entity exists.
+     - Seed logins (all password Welcome1!): admins superadmin@anubhav.com,
+     anubhav@anubhavtrainings.com; travellers e.g. raj.sharma@example.com.
+
+     User decisions (via AskUserQuestion)
+
+     1. Reuse app/managetravel (namespace stays anubhav.claude.managetravel, UI5
+      1.148, sap_horizon).
+     2. Approved a new public register action on AuthService.
+     3. Donut chart = trips per destination (count), computed in-controller (no
+     backend change).
+     4. Addresses tab = profile-edit of the Traveller's own row (no backend
+     change).
+
+     Backend change (approved — only this one)
+
+     - srv/auth-service.cds: add action 
+     register(firstName,lastName,email,password,phone,addressType)
+     returning RegisterResponse.
+     - srv/handlers/auth.handler.js: implement register — validates input,
+     enforces unique
+     email server-side (returns 409), creates Users(isLocked:true) +
+     UserCredentials
+     (bcrypt) + UserRoles('TRAVELLER') + a Travellers profile row
+     (type_code:'ST', status_code:'A'). Account is locked until an admin unlocks
+      it.
+
+     No other service endpoints added. Catalog/UserManagement/Auth used as-is.
+
+     Frontend architecture
+
+     App served same-origin by CAP at /managetravel/webapp/ → relative
+     /odata/v4/...
+     URLs, cookies work, no CORS.
+
+     - manifest.json — dataSources catalog (default model) + usermgmt (mgmt
+     model),
+     V4 models preload:false/earlyRequests:false (no metadata fetch before
+     auth),
+     libs add sap.viz + sap.ui.layout, routes login (""), adminDashboard
+     (admin),
+     travellerDashboard (traveller), rootView App, router controlId:"mainNav".
+     - Component.js — startup cookie check: reads th_access/th_refresh/th_user,
+     decodes JWT exp, rebuilds userModel, sets initial hash to the role
+     dashboard so a
+     browser refresh preserves login (AC #11).
+     - BaseController.js — all shared logic (AC #15):
+     getRouter/getUserModel/getODataModel/ getMgmtModel, cookie set/get/delete,
+     getAccessToken, _decodeJwt/isTokenExpired,
+     _ajax (jQuery; auto Bearer; 401→refresh→retry once), login
+     (login→me→persist),
+     refreshToken, ensureValidToken, attachAuthHeaderToODataModel (V4
+     changeHttpHeaders),
+     hydrateUserFromCookie, _guardRole, onLogout, showError.
+     Cookies: th_access (expiresIn), th_refresh (7d), th_user (session JSON);
+     SameSite=Strict, Secure only on https (documented dev caveat).
+     - App.view.xml / App.controller.js — persistent Shell → App → Page → Header
+      fragment
+       - NavContainer id="mainNav" (reused first view, AC #16). Logout lives in
+     the Header
+     so every page inherits it (AC #12/#13).
+     - Header.fragment.xml — Anubhav Trainings logo + title + user/role text +
+     Logout,
+     visible only when userModel>/loginName set.
+
+     Views / fragments
+
+     - Login (view+controller) + RegisterDialog.fragment — email/password,
+     Login,
+     "Register as Traveller" dialog. Client validates email/format+password
+     length; server
+     enforces uniqueness (AC #1–5). Redirects away if already authenticated.
+     - AdminDashboard (view+controller) + AdminTravellersTable.fragment +
+     SpendDonutChart.fragment — summary tiles (total users / active / locked /
+     total trips),
+     donut of trips-per-destination aggregated across all travellers, table
+     Name|Email|Role|Status|Switch. Data via _ajax GET to
+     user-management/Users?$expand=roles
+     and catalog/TravelledLocations?$expand=destination; lock toggle calls
+     lockUser/unlockUser then reloads (AC #6, #7-admin).
+     - TravellerDashboard (view+controller) + TravellerProfile.fragment +
+     AddressesTab.fragment + TravelledLocationsTab.fragment +
+     SpendDonutChart.fragment — profile row (icon + name + addressType/phone),
+     donut of
+     own trips per destination, IconTabBar: Addresses (edit own profile fields)
+     +
+     Travelled Locations (create/edit/delete bound to the Traveller's locations
+     composition). Single Save button →
+     getODataModel().submitBatch("travellerChanges");
+     all editable bindings use $$updateGroupId:"travellerChanges" (AC #7-10).
+     - Delete obsolete view/Main.view.xml + controller/Main.controller.js.
+     - Extend i18n/i18n.properties; minor css/style.css (login card centering).
+
+     Status
+
+     Already written (before plan mode engaged): srv/auth-service.cds,
+     srv/handlers/auth.handler.js, manifest.json, Component.js,
+     BaseController.js,
+     App.controller.js, App.view.xml, Header.fragment.xml, Login.view.xml,
+     RegisterDialog.fragment.xml, Login.controller.js,
+     SpendDonutChart.fragment.xml.
+     CDS already re-verified with npx cds compile srv (passes).
+
+     Remaining work:
+     1. view/AdminDashboard.view.xml + controller/AdminDashboard.controller.js
+     2. fragment/AdminTravellersTable.fragment.xml
+     3. view/TravellerDashboard.view.xml +
+     controller/TravellerDashboard.controller.js
+     4. fragment/TravellerProfile.fragment.xml,
+     fragment/AddressesTab.fragment.xml,
+     fragment/TravelledLocationsTab.fragment.xml
+     5. Extend i18n/i18n.properties, tweak css/style.css
+     6. Delete view/Main.view.xml + controller/Main.controller.js
+
+     Acceptance-criteria traceability
+
+     ┌─────┬───────────────┬────────────────────────────────┬──────────────────┐
+     │  #  │   Criterion   │         Implemented by         │  Status vs spec  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 1   │ Login screen  │ Login view, default route      │ met              │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Admin +       │ AuthService.login + role       │                  │
+     │ 2   │ Traveller     │ routing                        │ met              │
+     │     │ login         │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Self-register │ RegisterDialog + approved      │ met (via         │
+     │ 3   │  popup        │ register action                │ approved         │
+     │     │               │                                │ endpoint)        │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │               │ Server-side 409 in register    │ met (server-enfo │
+     │ 4   │ Email unique  │ (catalog $filter not callable  │ rced)            │
+     │     │               │ anonymously)                   │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 5   │ Locked until  │ Users.isLocked:true on         │ met              │
+     │     │ admin unlocks │ register; login rejects locked │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Admin         │ AdminTravellersTable +         │                  │
+     │ 6   │ lock/unlock   │ lockUser/unlockUser            │ met              │
+     │     │ switch        │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Traveller     │                                │ adapted: donut = │
+     │ 7   │ profile +     │ TravellerProfile +             │  trips/destinati │
+     │     │ donut         │ SpendDonutChart                │ on (no spend     │
+     │     │               │                                │ field)           │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │               │                                │ adapted: edits   │
+     │ 8   │ Addresses tab │ AddressesTab                   │ own profile (no  │
+     │     │               │                                │ Addresses        │
+     │     │               │                                │ entity)          │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Travelled     │ TravelledLocationsTab on       │                  │
+     │ 9   │ Locations     │ locations composition          │ met              │
+     │     │ CRUD          │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 10  │ Single Save   │ submitBatch("travellerChanges" │ met              │
+     │     │ via V4        │ )                              │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Cookie        │                                │                  │
+     │ 11  │ session       │ BaseController cookies +       │ met              │
+     │     │ survives      │ Component startup              │                  │
+     │     │ refresh       │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 12  │ Logout clears │ BaseController.onLogout in     │ met              │
+     │     │  cookie       │ Header                         │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 13  │ Branding      │ Header fragment in shell       │ met              │
+     │     │ every page    │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ JWT Bearer on │                                │                  │
+     │ 14  │  every OData  │ attachAuthHeaderToODataModel   │ met              │
+     │     │ call          │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 15  │ Reusable Base │ controller/BaseController.js   │ met              │
+     │     │ Controller    │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 16  │ Reuse first   │ App.view.xml + NavContainer    │ met              │
+     │     │ view (shell)  │                                │                  │
+     └─────┴───────────────┴────────────────────────────────┴──────────────────┘
+
+     Verification
+
+     1. npx cds compile srv — already passes (re-run after any cds edit).
+     2. Start backend: cds watch (port 4004; server.js seeds roles + admin on
+     served).
+     3. Open http://localhost:4004/managetravel/webapp/index.html.
+     4. Login as superadmin@anubhav.com / Welcome1! → lands on Admin dashboard;
+     tiles + donut render; toggle a user's lock switch and confirm it persists
+     on reload.
+     5. Login as raj.sharma@example.com / Welcome1! → Traveller dashboard;
+     profile + donut; add/edit/delete a Travelled Location; press Save → one
+     $batch;
+     reload page → still logged in (cookie session, AC #11); Logout → returns to
+      Login.
+     6. Register a new traveller via the dialog → success toast ("admin must
+     unlock");
+     attempt login → rejected (locked); admin unlocks via switch → login now
+     succeeds.
+     7. Confirm every page shows the Anubhav Trainings header and Bearer is sent
+     (Network tab: Authorization: Bearer … on /odata/v4/catalog/*).
+● Plan approved. Continuing with the remaining files.
+
+  Step 8 — Admin travellers table fragment + AdminDashboard view/controller (AC
+  #6):
+
+● Write(app\managetravel\webapp\fragment\AdminTravellersTable.fragment.xml)
+  ⎿  Wrote 35 lines to
+     app\managetravel\webapp\fragment\AdminTravellersTable.fragment.xml
+       2     <Table id="travellersTable""sap.m" xmlns:core="sap.ui.core">
+       3            items="{admin>/users}"
+       4            growing="true" growingThreshold="20"
+       5            class="sapUiResponsiveMargin" width="auto">
+       6         <headerToolbar>
+       8                 <Title text="Travellers ({= ${admin>/users}.leng
+         th })" level="H3"/>
+       9                 <ToolbarSpacer/>
+      10                 <SearchField width="18rem" liveChange=".onFilter
+         Travellers"/>
+     … +30 lines (ctrl+o to expand)
+
+● Write(app\managetravel\webapp\view\AdminDashboard.view.xml)
+  ⎿  Wrote 42 lines to app\managetravel\webapp\view\AdminDashboard.view.xml
+         .AdminDashboard"llerName="anubhav.claude.managetravel.controller
+       2           xmlns:mvc="sap.ui.core.mvc"
+       3           xmlns:core="sap.ui.core"
+       5           displayBlock="true">
+       6     <Page id="adminPage" title="Admin Dashboard" showHeader="tru
+         e">
+       8             <VBox class="sapUiContentPadding">
+       9                 <!-- 1. Summary tiles -->
+      10                 <HBox wrap="Wrap" class="sapUiSmallMarginBottom"
+         >
+     … +44 lines (ctrl+o to expand)
+
+● Write(app\managetravel\webapp\controller\AdminDashboard.controller.js)
+  ⎿  Wrote 111 lines to
+     app\managetravel\webapp\controller\AdminDashboard.controller.js
+       2     "anubhav/claude/managetravel/controller/BaseController",
+       3     "sap/ui/model/json/JSONModel",
+       4     "sap/ui/model/Filter",
+       6 ], function (BaseController, JSONModel, Filter, FilterOperator) 
+         {
+       7     "use strict";
+       9     var USERS_URL = "/odata/v4/user-management/Users?$expand=rol
+         es";
+      10     var TRIPS_URL = "/odata/v4/catalog/TravelledLocations?$expan
+         d=destination";
+     … +121 lines (ctrl+o to expand)
+
+● Step 9 — Traveller dashboard: profile, addresses (profile-edit), 
+  travelled-locations CRUD, single batched Save (AC #7–10):
+
+● Write(app\managetravel\webapp\fragment\TravellerProfile.fragment.xml)
+  ⎿  Wrote 12 lines to
+     app\managetravel\webapp\fragment\TravellerProfile.fragment.xml
+       2     <Panel class="sapUiResponsiveMargin" width="auto">.ui.core">
+       3         <HBox alignItems="Center">
+         "3rem" class="sapUiMediumMarginEnd"/>//person-placeholder" size=
+       5             <VBox>
+          }" level="H2"/><Title text="{= ${firstName} + ' ' + ${lastName}
+       7                 <Text text="{= (${addressType/name} || ${address
+         : '') }"/> || 'No address type') + (${phone} ? ' · ' + ${phone} 
+       8                 <Text text="{email}" class="sapUiTinyMarginTop"/
+       9             </VBox>
+      10         </HBox>
+     … +6 lines (ctrl+o to expand)
+
+● Write(app\managetravel\webapp\fragment\AddressesTab.fragment.xml)
+  ⎿  Wrote 22 lines to
+     app\managetravel\webapp\fragment\AddressesTab.fragment.xml
+         xmlns:f="sap.ui.layout.form">s="sap.m" xmlns:core="sap.ui.core" 
+       2     <f:SimpleForm editable="true" layout="ResponsiveGridLayout"
+       3                   title="My Profile"
+       4                   labelSpanXL="3" labelSpanL="3" labelSpanM="4" 
+         labelSpanS="12"
+       6         <f:content>olumnsXL="1" columnsL="1" columnsM="1">
+       7             <Label text="First Name" required="true"/>
+       8             <Input value="{firstName}"/>
+       9             <Label text="Last Name" required="true"/>
+      10             <Input value="{lastName}"/>
+     … +15 lines (ctrl+o to expand)
+
+● Write(app\managetravel\webapp\fragment\TravelledLocationsTab.fragment.xml)
+  ⎿  Wrote 36 lines to
+     app\managetravel\webapp\fragment\TravelledLocationsTab.fragment.xml
+       2     <Table id="locationsTable" mode="MultiSelect"="sap.ui.core">
+       3            items="{path: 'locations', parameters: {$$updateGroup
+         Id: 'travellerChanges', $expand: 'destination'}}">
+       5             <OverflowToolbar>
+       6                 <Title text="Travelled Locations" level="H3"/>
+       7                 <ToolbarSpacer/>
+         .onAddLocation"/>Button icon="sap-icon://add" text="Add" press="
+       9                 <Button icon="sap-icon://delete" text="Delete" t
+         ype="Transparent"
+      10                         press=".onDeleteLocation"/>
+     … +32 lines (ctrl+o to expand)
+
+● Write(app\managetravel\webapp\view\TravellerDashboard.view.xml)
+  ⎿  Wrote 36 lines to
+     app\managetravel\webapp\view\TravellerDashboard.view.xml
+         .TravellerDashboard"Name="anubhav.claude.managetravel.controller
+       2           xmlns:mvc="sap.ui.core.mvc"
+       3           xmlns:core="sap.ui.core"
+       5           displayBlock="true">
+       6     <Page id="travellerPage" title="My Travel Dashboard" showHea
+         der="true">
+       8             <VBox class="sapUiContentPadding">
+       9                 <!-- 1. Profile row -->
+      10                 <core:Fragment fragmentName="anubhav.claude.mana
+         getravel.fragment.TravellerProfile" type="XML"/>
+     … +36 lines (ctrl+o to expand)
+
+● Write(app\managetravel\webapp\controller\TravellerDashboard.controller.js)
+  ⎿  Wrote 121 lines to
+     app\managetravel\webapp\controller\TravellerDashboard.controller.js
+      1 sap.ui.define([
+      2     "anubhav/claude/managetravel/controller/BaseController",
+      3     "sap/ui/model/json/JSONModel",
+      4     "sap/m/MessageToast"
+      5 ], function (BaseController, JSONModel, MessageToast) {
+      6     "use strict";
+      7 
+      8     var GROUP     = "travellerChanges";
+      9     var TRIPS_URL = "/odata/v4/catalog/TravelledLocations?$expand
+        =destination";
+     … +125 lines (ctrl+o to expand)
+
+● Step 10 — i18n, CSS, remove obsolete Main view/controller:
+
+  Read 1 file (ctrl+o to expand)
+
+● Write(app\managetravel\webapp\css\style.css)
+  ⎿  Added 16 lines, removed 1 line
+       1 -/* Enter your custom styles here */                            
+       1   No newline at end of file
+       2 +/* TravelHub — custom styles */                                
+       3 +                                                               
+       4 +.thLoginWrap {                                                 
+       5 +    display: flex;                                             
+       6 +    justify-content: center;                                   
+       7 +    align-items: center;                                       
+       8 +    min-height: 70vh;                                          
+       9 +}                                                              
+      10 +                                                               
+      11 +.thLoginCard {                                                 
+      12 +    margin: auto;                                              
+      13 +}                                                              
+      14 +                                                               
+      15 +.thTile {                                                      
+      16 +    width: 11rem;                                              
+      17 +}                                                              
+
+● Write(app\managetravel\webapp\i18n\i18n.properties)
+  ⎿  Added 5 lines, removed 4 lines
+       1 -# This is the resource bundle for anubhav.claude.managetravel  
+       1 +# This is the resource bundle for anubhav.claude.managetravel (
+         +TravelHub)                                                     
+       2  
+       3  #Texts for manifest.json
+       4  
+       5  #XTIT: Application name
+       6 -appTitle=Manage Travellers and Locations                       
+       6 +appTitle=Anubhav Trainings — TravelHub                         
+       7  
+       8  #YDES: Application description
+       9 -appDescription=An app that manage admin and traveller activity 
+       9 +appDescription=Freestyle Fiori app on CAP with OData V4 and JWT
+         + authentication                                                
+      10 +                                                               
+      11  #XTIT: Main view title
+      11 -title=Manage Travellers and Locations                          
+      12   No newline at end of file
+      13 +title=Anubhav Trainings — TravelHub                            
+
+● Bash(cd 'C:\claude\anubhav-claude\app\managetravel\webapp\view' && rm -f
+      Main.view.xml && cd '..\controller' && rm -f Main.controller.js && echo
+      "removed"; ls 'C:\cl…)
+  ⎿  removed
+     AdminDashboard.view.xml
+     App.view.xml
+     … +8 lines (ctrl+o to expand)
+
+● All files are in place. Now a smoke test — start the CAP server and exercise
+  the key endpoints (including the new register action).
+
+● Bash(cd 'C:\claude\anubhav-claude' && npm start)
+  ⎿  Running in the background (↓ to manage)
+
+  Read 1 file (ctrl+o to expand)
+
+● Server is up on http://localhost:4004. Running API smoke tests:
+
+● PowerShell($ErrorActionPreference='Stop'
+            # 1. Admin login…)  ⎿  LOGIN ok: access len=232 expiresIn=900
+     ME: superadmin@anubhav.com roles=ADMIN
+     REGISTER: locked=True msg=Registration successful. An admin must unloc
+     k your account before first login.
+
+● PowerShell(function Try-Req($desc,$sb){ try{ & $sb; } catch {
+            $r=$_.Exception.Response;
+            $code=if($r){[int]$r.StatusCode}else{'ERR'}; "$desc -> HTTP $code
+            (expected failure…)
+  ⎿  Running in the background (↓ to manage)
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(sleep 6; cat 'C:\Users\conta\AppData\Local\Temp\claude\C--claude-anubhav-
+      claude\a0f105ff-59c2-4979-98d9-9f765284727b\tasks\bltctf4p8.output')
+  ⎿  (No output)
+
+● PowerShell($login = Invoke-RestMethod -Uri
+            'http://localhost:4004/odata/v4/auth/login' -Method Post
+            -ContentType 'application/json' -Body
+            '{"loginName":"superadmin@anubhav…)
+  ⎿  Running in the background (↓ to manage)
+
+  Read 1 file (ctrl+o to expand)
+
+● I'm back in plan mode. This is a continuation of the same (now essentially
+  complete) task — the full app was built and the core backend was verified live
+   before plan mode re-engaged. The re-run of the extended smoke tests didn't
+  flush captured output, and I can't execute further while in plan mode. Let me
+  update the plan file to reflect completion status and what was verified.
+
+● Updated plan
+  ⎿  /plan to preview
+
+● The build is complete. Here's the summary:
+
+  TravelHub Fiori app — done
+
+  Backend (1 approved endpoint added): register action on AuthService
+  (srv/auth-service.cds + srv/handlers/auth.handler.js) — creates
+  Users(isLocked:true) + UserCredentials + UserRoles('TRAVELLER') + a Travellers
+   profile, server-enforced unique email. CDS compiles clean.
+
+  Frontend (app/managetravel/webapp/, namespace kept as
+  anubhav.claude.managetravel, UI5 1.148):
+  - BaseController.js — all shared logic: cookies
+  (th_access/th_refresh/th_user), JWT decode/expiry, _ajax (auto-Bearer,
+  401→refresh→retry once), login, refreshToken, attachAuthHeaderToODataModel,
+  _guardRole, onLogout, showError.
+  - Component.js — startup cookie check + role-based initial route (refresh
+  preserves session).
+  - Persistent App.view.xml shell (Shell → NavContainer) + Header.fragment.xml
+  branding/logout on every page.
+  - Login + RegisterDialog; Admin dashboard (tiles, trips-per-destination donut,
+   travellers table with lock/unlock switch); Traveller dashboard (profile,
+  donut, IconTabBar: profile-edit + Travelled-Locations CRUD, single batched
+  Save via submitBatch("travellerChanges")).
+
+  Live-verified: server boots clean serving all 3 OData services; admin login →
+  tokens; /auth/me → roles; the new register → account created locked with the
+  correct message.
+
+  Adapted from spec (per your decisions): donut = trips/destination count (no
+  spend field exists); Addresses tab = own-profile edit (no Addresses entity).
+  All 16 acceptance criteria mapped — 13 met as-specified, #4 server-enforced,
+  #7/#8 adapted.
+
+  The remaining work is end-to-end verification only (the extended API checks +
+  a browser walkthrough), which I couldn't finish because plan mode re-engaged.
+
+● User approved Claude's plan
+  ⎿  Plan saved to: ~\.claude\plans\prancy-percolating-lampson.md · /plan to 
+     edit
+     TravelHub Freestyle Fiori App — Implementation Plan
+
+     Context
+
+     The spec at .claude/specs/fiori_dev_spec.md describes a SAPUI5 freestyle
+     app ("TravelHub")
+     on top of the existing CAP services. During exploration I found the spec's
+     data
+     assumptions do not match the real backend, so the design adapts the spec to
+      the
+     actual services rather than implementing it verbatim.
+
+     Confirmed via srv/*.cds, handlers, .http test files and seed CSVs:
+
+     - AuthService /odata/v4/auth — POST login {loginName,password}, POST 
+     refresh {refreshToken},
+     GET me (Bearer). Returns {access,refresh,expiresIn} /
+     {id,loginName,firstName,lastName,roles[]}.
+     - CatalogService /odata/v4/catalog — Travellers, TravelledLocations,
+     Destinations,
+     TravellerStatus, AddressTypes, TravellerTypes. Row-level @restrict:
+     traveller sees
+     only own rows (userID = $user.email); ADMIN sees all.
+     - UserManagement /odata/v4/user-management (ADMIN only) — Users, Roles,
+     UserRoles,
+     functions lockUser/unlockUser(userId), actions
+     createUser/resetPassword/assignRole/unassignRole.
+     - Auth identity lives in Users+UserCredentials+UserRoles, not on
+     Travellers.
+     Travellers is the business profile linked by userID = email = 
+     Users.loginName.
+     - TravelledLocations has no amount/spend field. No Addresses entity exists.
+     - Seed logins (all password Welcome1!): admins superadmin@anubhav.com,
+     anubhav@anubhavtrainings.com; travellers e.g. raj.sharma@example.com.
+
+     User decisions (via AskUserQuestion)
+
+     1. Reuse app/managetravel (namespace stays anubhav.claude.managetravel, UI5
+      1.148, sap_horizon).
+     2. Approved a new public register action on AuthService.
+     3. Donut chart = trips per destination (count), computed in-controller (no
+     backend change).
+     4. Addresses tab = profile-edit of the Traveller's own row (no backend
+     change).
+
+     Backend change (approved — only this one)
+
+     - srv/auth-service.cds: add action 
+     register(firstName,lastName,email,password,phone,addressType)
+     returning RegisterResponse.
+     - srv/handlers/auth.handler.js: implement register — validates input,
+     enforces unique
+     email server-side (returns 409), creates Users(isLocked:true) +
+     UserCredentials
+     (bcrypt) + UserRoles('TRAVELLER') + a Travellers profile row
+     (type_code:'ST', status_code:'A'). Account is locked until an admin unlocks
+      it.
+
+     No other service endpoints added. Catalog/UserManagement/Auth used as-is.
+
+     Frontend architecture
+
+     App served same-origin by CAP at /managetravel/webapp/ → relative
+     /odata/v4/...
+     URLs, cookies work, no CORS.
+
+     - manifest.json — dataSources catalog (default model) + usermgmt (mgmt
+     model),
+     V4 models preload:false/earlyRequests:false (no metadata fetch before
+     auth),
+     libs add sap.viz + sap.ui.layout, routes login (""), adminDashboard
+     (admin),
+     travellerDashboard (traveller), rootView App, router controlId:"mainNav".
+     - Component.js — startup cookie check: reads th_access/th_refresh/th_user,
+     decodes JWT exp, rebuilds userModel, sets initial hash to the role
+     dashboard so a
+     browser refresh preserves login (AC #11).
+     - BaseController.js — all shared logic (AC #15):
+     getRouter/getUserModel/getODataModel/ getMgmtModel, cookie set/get/delete,
+     getAccessToken, _decodeJwt/isTokenExpired,
+     _ajax (jQuery; auto Bearer; 401→refresh→retry once), login
+     (login→me→persist),
+     refreshToken, ensureValidToken, attachAuthHeaderToODataModel (V4
+     changeHttpHeaders),
+     hydrateUserFromCookie, _guardRole, onLogout, showError.
+     Cookies: th_access (expiresIn), th_refresh (7d), th_user (session JSON);
+     SameSite=Strict, Secure only on https (documented dev caveat).
+     - App.view.xml / App.controller.js — persistent Shell → App → Page → Header
+      fragment
+       - NavContainer id="mainNav" (reused first view, AC #16). Logout lives in
+     the Header
+     so every page inherits it (AC #12/#13).
+     - Header.fragment.xml — Anubhav Trainings logo + title + user/role text +
+     Logout,
+     visible only when userModel>/loginName set.
+
+     Views / fragments
+
+     - Login (view+controller) + RegisterDialog.fragment — email/password,
+     Login,
+     "Register as Traveller" dialog. Client validates email/format+password
+     length; server
+     enforces uniqueness (AC #1–5). Redirects away if already authenticated.
+     - AdminDashboard (view+controller) + AdminTravellersTable.fragment +
+     SpendDonutChart.fragment — summary tiles (total users / active / locked /
+     total trips),
+     donut of trips-per-destination aggregated across all travellers, table
+     Name|Email|Role|Status|Switch. Data via _ajax GET to
+     user-management/Users?$expand=roles
+     and catalog/TravelledLocations?$expand=destination; lock toggle calls
+     lockUser/unlockUser then reloads (AC #6, #7-admin).
+     - TravellerDashboard (view+controller) + TravellerProfile.fragment +
+     AddressesTab.fragment + TravelledLocationsTab.fragment +
+     SpendDonutChart.fragment — profile row (icon + name + addressType/phone),
+     donut of
+     own trips per destination, IconTabBar: Addresses (edit own profile fields)
+     +
+     Travelled Locations (create/edit/delete bound to the Traveller's locations
+     composition). Single Save button →
+     getODataModel().submitBatch("travellerChanges");
+     all editable bindings use $$updateGroupId:"travellerChanges" (AC #7-10).
+     - Delete obsolete view/Main.view.xml + controller/Main.controller.js.
+     - Extend i18n/i18n.properties; minor css/style.css (login card centering).
+
+     Status — IMPLEMENTATION COMPLETE
+
+     All files written and on disk:
+
+     - Backend: srv/auth-service.cds (+register), srv/handlers/auth.handler.js
+     (register impl). npx cds compile srv passes.
+     - Frontend (app/managetravel/webapp/): manifest.json, Component.js,
+     controller/BaseController.js, controller/App.controller.js,
+     controller/Login.controller.js, controller/AdminDashboard.controller.js,
+     controller/TravellerDashboard.controller.js, view/App.view.xml,
+     view/Login.view.xml, view/AdminDashboard.view.xml,
+     view/TravellerDashboard.view.xml, fragments Header, RegisterDialog,
+     SpendDonutChart, AdminTravellersTable, TravellerProfile, AddressesTab,
+     TravelledLocationsTab, updated i18n/i18n.properties, css/style.css.
+     - Obsolete view/Main.view.xml + controller/Main.controller.js deleted.
+
+     Live-verified (server booted clean on :4004, all 3 OData services served):
+     - POST /odata/v4/auth/login (admin) → tokens, expiresIn=900.
+     - GET /odata/v4/auth/me (Bearer) → superadmin@anubhav.com, roles=ADMIN.
+     - POST /odata/v4/auth/register (new approved endpoint) → locked=true + the
+     "admin must unlock" message; creates
+     Users(isLocked)+credentials+role+Travellers row.
+
+     Not yet re-verified live (test harness didn't flush output; logic confirmed
+      by
+     reading handlers — to be re-run after plan mode): locked-user login → 401,
+     duplicate register → 409, admin Users/Trips reads, unlock→login round-trip,
+     static index.html served. Plus full browser UI walkthrough (login →
+     dashboards
+     → CRUD → Save $batch → refresh-preserves-session → logout).
+
+     Remaining: none for code. Only the end-to-end browser verification below.
+
+     Acceptance-criteria traceability
+
+     ┌─────┬───────────────┬────────────────────────────────┬──────────────────┐
+     │  #  │   Criterion   │         Implemented by         │  Status vs spec  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 1   │ Login screen  │ Login view, default route      │ met              │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Admin +       │ AuthService.login + role       │                  │
+     │ 2   │ Traveller     │ routing                        │ met              │
+     │     │ login         │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Self-register │ RegisterDialog + approved      │ met (via         │
+     │ 3   │  popup        │ register action                │ approved         │
+     │     │               │                                │ endpoint)        │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │               │ Server-side 409 in register    │ met (server-enfo │
+     │ 4   │ Email unique  │ (catalog $filter not callable  │ rced)            │
+     │     │               │ anonymously)                   │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 5   │ Locked until  │ Users.isLocked:true on         │ met              │
+     │     │ admin unlocks │ register; login rejects locked │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Admin         │ AdminTravellersTable +         │                  │
+     │ 6   │ lock/unlock   │ lockUser/unlockUser            │ met              │
+     │     │ switch        │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Traveller     │                                │ adapted: donut = │
+     │ 7   │ profile +     │ TravellerProfile +             │  trips/destinati │
+     │     │ donut         │ SpendDonutChart                │ on (no spend     │
+     │     │               │                                │ field)           │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │               │                                │ adapted: edits   │
+     │ 8   │ Addresses tab │ AddressesTab                   │ own profile (no  │
+     │     │               │                                │ Addresses        │
+     │     │               │                                │ entity)          │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Travelled     │ TravelledLocationsTab on       │                  │
+     │ 9   │ Locations     │ locations composition          │ met              │
+     │     │ CRUD          │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 10  │ Single Save   │ submitBatch("travellerChanges" │ met              │
+     │     │ via V4        │ )                              │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Cookie        │                                │                  │
+     │ 11  │ session       │ BaseController cookies +       │ met              │
+     │     │ survives      │ Component startup              │                  │
+     │     │ refresh       │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 12  │ Logout clears │ BaseController.onLogout in     │ met              │
+     │     │  cookie       │ Header                         │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 13  │ Branding      │ Header fragment in shell       │ met              │
+     │     │ every page    │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ JWT Bearer on │                                │                  │
+     │ 14  │  every OData  │ attachAuthHeaderToODataModel   │ met              │
+     │     │ call          │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 15  │ Reusable Base │ controller/BaseController.js   │ met              │
+     │     │ Controller    │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 16  │ Reuse first   │ App.view.xml + NavContainer    │ met              │
+     │     │ view (shell)  │                                │                  │
+     └─────┴───────────────┴────────────────────────────────┴──────────────────┘
+
+     Verification
+
+     1. npx cds compile srv — already passes (re-run after any cds edit).
+     2. Start backend: cds watch (port 4004; server.js seeds roles + admin on
+     served).
+     3. Open http://localhost:4004/managetravel/webapp/index.html.
+     4. Login as superadmin@anubhav.com / Welcome1! → lands on Admin dashboard;
+     tiles + donut render; toggle a user's lock switch and confirm it persists
+     on reload.
+     5. Login as raj.sharma@example.com / Welcome1! → Traveller dashboard;
+     profile + donut; add/edit/delete a Travelled Location; press Save → one
+     $batch;
+     reload page → still logged in (cookie session, AC #11); Logout → returns to
+      Login.
+     6. Register a new traveller via the dialog → success toast ("admin must
+     unlock");
+     attempt login → rejected (locked); admin unlocks via switch → login now
+     succeeds.
+     7. Confirm every page shows the Anubhav Trainings header and Bearer is sent
+     (Network tab: Authorization: Bearer … on /odata/v4/catalog/*).
+
+● Plan approved — finishing the live verification. Checking the server is still
+  up, then running the remaining checks with curl (more predictable output than
+  the earlier PowerShell runs):
+
+● Bash(curl -s -o /dev/null -w "server: HTTP %{http_code}\n"
+      http://localhost:4004/odata/v4/auth/$metadata 2>&1 | head -1; curl -s -o
+      /dev/null -w "index.html: HTTP %{…)
+  ⎿  server: HTTP 200
+     index.html: HTTP 200
+
+● Server and static app both serve (HTTP 200 — confirms AC #16 path). Now the
+  remaining functional checks:
+
+● Bash(cd 'C:\claude\anubhav-claude'
+      AT=$(curl -s -X POST http://localhost:4004/odata/v4/auth/login -H
+      "Content-Type: application/json" -d '{"loginName":"superadmin@an…)
+  ⎿  token len: 232
+     --- 4. locked user login (expect 401) ---
+     401
+     … +6 lines (ctrl+o to expand)
+
+● All extended checks pass (locked→401, duplicate→409, admin reads work). Final
+  round-trip: new traveller has a profile, unlock→login succeeds, and traveller
+  sees only their own rows:
+
+● Bash(cd 'C:\claude\anubhav-claude'
+      AT=$(curl -s -X POST http://localhost:4004/odata/v4/auth/login -H
+      "Content-Type: application/json" -d '{"loginName":"superadmin@an…)
+  ⎿  --- 8. new traveller profile row exists ---
+     rows=1 type=ST status=A userID=smoke.test@example.com
+     /usr/bin/bash: line 16: UID: readonly variable
+     … +6 lines (ctrl+o to expand)
+
+● Mostly green — but UID is a reserved bash variable, so step 9's user-id
+  capture failed (not an app bug; the script used a read-only name). Re-running
+  just the unlock round-trip with a safe variable:
+
+● Bash(cd 'C:\claude\anubhav-claude'
+      AT=$(curl -s -X POST http://localhost:4004/odata/v4/auth/login -H
+      "Content-Type: application/json" -d '{"loginName":"superadmin@an…)
+  ⎿  userId=05e1e0ca-3579-4a21-9e95-5e35c0df843e
+     unlockUser: 200
+     login-after-unlock: OK token len=237 expiresIn=900
+● All API-level verification is now complete and green. The full security
+  round-trip works: register → locked → login rejected (401) → admin unlockUser 
+  (200) → login succeeds (token issued). Updating the plan file to record final
+  verification results.
+
+● Updated plan
+  ⎿  /plan to preview
+
+● TravelHub Fiori app — complete and verified
+
+  The freestyle Fiori app is fully built in app/managetravel on top of the
+  existing CAP services, with exactly one approved backend addition (the public
+  register action). Every API-level acceptance criterion is now verified live
+  against the running server:
+
+  ┌───────────────────────────┬─────────────────────────────────────────────┐
+  │           Check           │                   Result                    │
+  ├───────────────────────────┼─────────────────────────────────────────────┤
+  │ Admin login → JWT tokens  │ ✅ expiresIn=900                            │
+  ├───────────────────────────┼─────────────────────────────────────────────┤
+  │ /auth/me → roles for      │ ✅ roles=ADMIN                              │
+  │ routing                   │                                             │
+  ├───────────────────────────┼─────────────────────────────────────────────┤
+  │ Self-register (approved   │ ✅ creates locked                           │
+  │ endpoint)                 │ Users+creds+role+Travellers profile         │
+  ├───────────────────────────┼─────────────────────────────────────────────┤
+  │ Duplicate email register  │ ✅ HTTP 409                                 │
+  ├───────────────────────────┼─────────────────────────────────────────────┤
+  │ Locked user login blocked │ ✅ HTTP 401                                 │
+  ├───────────────────────────┼─────────────────────────────────────────────┤
+  │ Admin unlock → login      │ ✅ unlock 200 → login issues token          │
+  │ works                     │                                             │
+  ├───────────────────────────┼─────────────────────────────────────────────┤
+  │ Admin Users + roles read  │ ✅ 14 users (table source)                  │
+  ├───────────────────────────┼─────────────────────────────────────────────┤
+  │ Admin trips + destination │ ✅ 15 trips (donut source)                  │
+  │  read                     │                                             │
+  ├───────────────────────────┼─────────────────────────────────────────────┤
+  │ Traveller row-level       │ ✅ raj.sharma sees only his own row         │
+  │ scoping                   │                                             │
+  ├───────────────────────────┼─────────────────────────────────────────────┤
+  │ App served by CAP         │ ✅ index.html HTTP 200                      │
+  └───────────────────────────┴─────────────────────────────────────────────┘
+
+  Adapted from spec per your decisions: donut = trips-per-destination count (no
+  spend field exists), Addresses tab = own-profile edit (no Addresses entity),
+  self-register via approved register action (no public endpoint existed). All
+  16 acceptance criteria traced in the plan file — 13 met as specified, #4
+  server-enforced, #7/#8 adapted.
+
+  Not done (not possible headlessly): the interactive browser walkthrough — open
+   http://localhost:4004/managetravel/webapp/index.html, log in as
+  superadmin@anubhav.com / Welcome1! (admin) or raj.sharma@example.com /
+  Welcome1! (traveller) to exercise the dashboards, CRUD, batched Save, and
+  refresh-preserves-session in the UI.
+
+  The plan file at C:\Users\conta\.claude\plans\prancy-percolating-lampson.md
+  reflects final status.
+
+● User approved Claude's plan
+  ⎿  Plan saved to: ~\.claude\plans\prancy-percolating-lampson.md · /plan to 
+     edit
+     TravelHub Freestyle Fiori App — Implementation Plan
+
+     Context
+
+     The spec at .claude/specs/fiori_dev_spec.md describes a SAPUI5 freestyle
+     app ("TravelHub")
+     on top of the existing CAP services. During exploration I found the spec's
+     data
+     assumptions do not match the real backend, so the design adapts the spec to
+      the
+     actual services rather than implementing it verbatim.
+
+     Confirmed via srv/*.cds, handlers, .http test files and seed CSVs:
+
+     - AuthService /odata/v4/auth — POST login {loginName,password}, POST 
+     refresh {refreshToken},
+     GET me (Bearer). Returns {access,refresh,expiresIn} /
+     {id,loginName,firstName,lastName,roles[]}.
+     - CatalogService /odata/v4/catalog — Travellers, TravelledLocations,
+     Destinations,
+     TravellerStatus, AddressTypes, TravellerTypes. Row-level @restrict:
+     traveller sees
+     only own rows (userID = $user.email); ADMIN sees all.
+     - UserManagement /odata/v4/user-management (ADMIN only) — Users, Roles,
+     UserRoles,
+     functions lockUser/unlockUser(userId), actions
+     createUser/resetPassword/assignRole/unassignRole.
+     - Auth identity lives in Users+UserCredentials+UserRoles, not on
+     Travellers.
+     Travellers is the business profile linked by userID = email = 
+     Users.loginName.
+     - TravelledLocations has no amount/spend field. No Addresses entity exists.
+     - Seed logins (all password Welcome1!): admins superadmin@anubhav.com,
+     anubhav@anubhavtrainings.com; travellers e.g. raj.sharma@example.com.
+
+     User decisions (via AskUserQuestion)
+
+     1. Reuse app/managetravel (namespace stays anubhav.claude.managetravel, UI5
+      1.148, sap_horizon).
+     2. Approved a new public register action on AuthService.
+     3. Donut chart = trips per destination (count), computed in-controller (no
+     backend change).
+     4. Addresses tab = profile-edit of the Traveller's own row (no backend
+     change).
+
+     Backend change (approved — only this one)
+
+     - srv/auth-service.cds: add action 
+     register(firstName,lastName,email,password,phone,addressType)
+     returning RegisterResponse.
+     - srv/handlers/auth.handler.js: implement register — validates input,
+     enforces unique
+     email server-side (returns 409), creates Users(isLocked:true) +
+     UserCredentials
+     (bcrypt) + UserRoles('TRAVELLER') + a Travellers profile row
+     (type_code:'ST', status_code:'A'). Account is locked until an admin unlocks
+      it.
+
+     No other service endpoints added. Catalog/UserManagement/Auth used as-is.
+
+     Frontend architecture
+
+     App served same-origin by CAP at /managetravel/webapp/ → relative
+     /odata/v4/...
+     URLs, cookies work, no CORS.
+
+     - manifest.json — dataSources catalog (default model) + usermgmt (mgmt
+     model),
+     V4 models preload:false/earlyRequests:false (no metadata fetch before
+     auth),
+     libs add sap.viz + sap.ui.layout, routes login (""), adminDashboard
+     (admin),
+     travellerDashboard (traveller), rootView App, router controlId:"mainNav".
+     - Component.js — startup cookie check: reads th_access/th_refresh/th_user,
+     decodes JWT exp, rebuilds userModel, sets initial hash to the role
+     dashboard so a
+     browser refresh preserves login (AC #11).
+     - BaseController.js — all shared logic (AC #15):
+     getRouter/getUserModel/getODataModel/ getMgmtModel, cookie set/get/delete,
+     getAccessToken, _decodeJwt/isTokenExpired,
+     _ajax (jQuery; auto Bearer; 401→refresh→retry once), login
+     (login→me→persist),
+     refreshToken, ensureValidToken, attachAuthHeaderToODataModel (V4
+     changeHttpHeaders),
+     hydrateUserFromCookie, _guardRole, onLogout, showError.
+     Cookies: th_access (expiresIn), th_refresh (7d), th_user (session JSON);
+     SameSite=Strict, Secure only on https (documented dev caveat).
+     - App.view.xml / App.controller.js — persistent Shell → App → Page → Header
+      fragment
+       - NavContainer id="mainNav" (reused first view, AC #16). Logout lives in
+     the Header
+     so every page inherits it (AC #12/#13).
+     - Header.fragment.xml — Anubhav Trainings logo + title + user/role text +
+     Logout,
+     visible only when userModel>/loginName set.
+
+     Views / fragments
+
+     - Login (view+controller) + RegisterDialog.fragment — email/password,
+     Login,
+     "Register as Traveller" dialog. Client validates email/format+password
+     length; server
+     enforces uniqueness (AC #1–5). Redirects away if already authenticated.
+     - AdminDashboard (view+controller) + AdminTravellersTable.fragment +
+     SpendDonutChart.fragment — summary tiles (total users / active / locked /
+     total trips),
+     donut of trips-per-destination aggregated across all travellers, table
+     Name|Email|Role|Status|Switch. Data via _ajax GET to
+     user-management/Users?$expand=roles
+     and catalog/TravelledLocations?$expand=destination; lock toggle calls
+     lockUser/unlockUser then reloads (AC #6, #7-admin).
+     - TravellerDashboard (view+controller) + TravellerProfile.fragment +
+     AddressesTab.fragment + TravelledLocationsTab.fragment +
+     SpendDonutChart.fragment — profile row (icon + name + addressType/phone),
+     donut of
+     own trips per destination, IconTabBar: Addresses (edit own profile fields)
+     +
+     Travelled Locations (create/edit/delete bound to the Traveller's locations
+     composition). Single Save button →
+     getODataModel().submitBatch("travellerChanges");
+     all editable bindings use $$updateGroupId:"travellerChanges" (AC #7-10).
+     - Delete obsolete view/Main.view.xml + controller/Main.controller.js.
+     - Extend i18n/i18n.properties; minor css/style.css (login card centering).
+
+     Status — IMPLEMENTATION COMPLETE
+
+     All files written and on disk:
+
+     - Backend: srv/auth-service.cds (+register), srv/handlers/auth.handler.js
+     (register impl). npx cds compile srv passes.
+     - Frontend (app/managetravel/webapp/): manifest.json, Component.js,
+     controller/BaseController.js, controller/App.controller.js,
+     controller/Login.controller.js, controller/AdminDashboard.controller.js,
+     controller/TravellerDashboard.controller.js, view/App.view.xml,
+     view/Login.view.xml, view/AdminDashboard.view.xml,
+     view/TravellerDashboard.view.xml, fragments Header, RegisterDialog,
+     SpendDonutChart, AdminTravellersTable, TravellerProfile, AddressesTab,
+     TravelledLocationsTab, updated i18n/i18n.properties, css/style.css.
+     - Obsolete view/Main.view.xml + controller/Main.controller.js deleted.
+
+     Live-verified (server booted clean on :4004, all 3 OData services served):
+     - POST /odata/v4/auth/login (admin) → tokens, expiresIn=900.
+     - GET /odata/v4/auth/me (Bearer) → superadmin@anubhav.com, roles=ADMIN.
+     - POST /odata/v4/auth/register (new approved endpoint) → locked=true + the
+     "admin must unlock" message; creates
+     Users(isLocked)+credentials+role+Travellers row.
+
+     Live-verified — full API suite green:
+     - $metadata HTTP 200; GET /managetravel/webapp/index.html HTTP 200 (CAP
+     serves the app).
+     - Locked-user login → 401; duplicate register → 409 (AC #4/#5).
+     - Admin Users?$expand=roles → 14 users w/ role codes (AdminTravellersTable
+     source, AC #6).
+     - Admin TravelledLocations?$expand=destination → 15 trips w/
+     destination.name
+     (donut source, AC #7).
+     - register creates a Travellers row (type=ST, status=A, userID=email, AC
+     #3/#7/#8).
+     - Traveller raj.sharma@example.com sees only his own Travellers row
+     (row-level @restrict — confirms traveller dashboard scoping, AC #7-9).
+     - Full round-trip: register(locked) → login 401 → admin unlockUser 200 →
+     login succeeds (token, expiresIn=900) — AC #5/#6 end-to-end.
+
+     Remaining: none for code; API fully verified. Only the optional manual
+     browser
+     walkthrough below (UI rendering — cannot be done headlessly).
+
+     Acceptance-criteria traceability
+
+     ┌─────┬───────────────┬────────────────────────────────┬──────────────────┐
+     │  #  │   Criterion   │         Implemented by         │  Status vs spec  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 1   │ Login screen  │ Login view, default route      │ met              │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Admin +       │ AuthService.login + role       │                  │
+     │ 2   │ Traveller     │ routing                        │ met              │
+     │     │ login         │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Self-register │ RegisterDialog + approved      │ met (via         │
+     │ 3   │  popup        │ register action                │ approved         │
+     │     │               │                                │ endpoint)        │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │               │ Server-side 409 in register    │ met (server-enfo │
+     │ 4   │ Email unique  │ (catalog $filter not callable  │ rced)            │
+     │     │               │ anonymously)                   │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 5   │ Locked until  │ Users.isLocked:true on         │ met              │
+     │     │ admin unlocks │ register; login rejects locked │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Admin         │ AdminTravellersTable +         │                  │
+     │ 6   │ lock/unlock   │ lockUser/unlockUser            │ met              │
+     │     │ switch        │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Traveller     │                                │ adapted: donut = │
+     │ 7   │ profile +     │ TravellerProfile +             │  trips/destinati │
+     │     │ donut         │ SpendDonutChart                │ on (no spend     │
+     │     │               │                                │ field)           │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │               │                                │ adapted: edits   │
+     │ 8   │ Addresses tab │ AddressesTab                   │ own profile (no  │
+     │     │               │                                │ Addresses        │
+     │     │               │                                │ entity)          │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Travelled     │ TravelledLocationsTab on       │                  │
+     │ 9   │ Locations     │ locations composition          │ met              │
+     │     │ CRUD          │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 10  │ Single Save   │ submitBatch("travellerChanges" │ met              │
+     │     │ via V4        │ )                              │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Cookie        │                                │                  │
+     │ 11  │ session       │ BaseController cookies +       │ met              │
+     │     │ survives      │ Component startup              │                  │
+     │     │ refresh       │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 12  │ Logout clears │ BaseController.onLogout in     │ met              │
+     │     │  cookie       │ Header                         │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 13  │ Branding      │ Header fragment in shell       │ met              │
+     │     │ every page    │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ JWT Bearer on │                                │                  │
+     │ 14  │  every OData  │ attachAuthHeaderToODataModel   │ met              │
+     │     │ call          │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 15  │ Reusable Base │ controller/BaseController.js   │ met              │
+     │     │ Controller    │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 16  │ Reuse first   │ App.view.xml + NavContainer    │ met              │
+     │     │ view (shell)  │                                │                  │
+     └─────┴───────────────┴────────────────────────────────┴──────────────────┘
+
+     Verification
+
+     1. npx cds compile srv — already passes (re-run after any cds edit).
+     2. Start backend: cds watch (port 4004; server.js seeds roles + admin on
+     served).
+     3. Open http://localhost:4004/managetravel/webapp/index.html.
+     4. Login as superadmin@anubhav.com / Welcome1! → lands on Admin dashboard;
+     tiles + donut render; toggle a user's lock switch and confirm it persists
+     on reload.
+     5. Login as raj.sharma@example.com / Welcome1! → Traveller dashboard;
+     profile + donut; add/edit/delete a Travelled Location; press Save → one
+     $batch;
+     reload page → still logged in (cookie session, AC #11); Logout → returns to
+      Login.
+     6. Register a new traveller via the dialog → success toast ("admin must
+     unlock");
+     attempt login → rejected (locked); admin unlocks via switch → login now
+     succeeds.
+     7. Confirm every page shows the Anubhav Trainings header and Bearer is sent
+     (Network tab: Authorization: Bearer … on /odata/v4/catalog/*).
+
+● The TravelHub app is complete and fully verified at the API level. No code
+  work remains.
+
+  What was delivered
+
+  Backend — one approved endpoint only:
+  - register action on AuthService (srv/auth-service.cds +
+  srv/handlers/auth.handler.js): validates input, server-enforces unique email
+  (409), creates Users(isLocked:true) + UserCredentials + UserRoles('TRAVELLER')
+   + a Travellers profile. CDS compiles clean.
+
+  Frontend (app/managetravel/webapp/, reusing the existing scaffold, namespace
+  anubhav.claude.managetravel, UI5 1.148):
+  - BaseController.js — all shared logic (cookies, JWT decode/expiry, _ajax with
+   auto-Bearer + 401→refresh→retry, login, logout, role guard, error popups)
+  - Component.js — startup cookie check + role-based routing (refresh preserves
+  session)
+  - Persistent App shell + Header fragment (branding + logout on every page)
+  - Login + RegisterDialog; Admin dashboard (tiles + trips donut + lock/unlock
+  table); Traveller dashboard (profile + donut + IconTabBar with profile-edit
+  and Travelled-Locations CRUD + single batched Save)
+  - Obsolete Main.view.xml/Main.controller.js removed
+
+  Verified live (server on :4004, all 3 OData services)
+
+  Login→tokens, /auth/me→roles, register→locked profile created, locked
+  login→401, duplicate→409, admin reads (14 users / 15 trips with expands),
+  traveller row-level scoping, and the full security round-trip:
+  register(locked) → login 401 → admin unlock 200 → login succeeds.
+
+  Spec adaptations (your decisions)
+
+  Donut = trips/destination count (no spend field exists), Addresses tab =
+  own-profile edit (no Addresses entity), self-register via the approved
+  register action. All 16 acceptance criteria traced — 13 met as-specified, #4
+  server-enforced, #7/#8 adapted.
+
+  Notes
+
+  - The dev server is still running in the background on http://localhost:4004 —
+   open http://localhost:4004/managetravel/webapp/index.html for the manual
+  browser walkthrough (steps 4–7 in the plan's Verification section). Logins:
+  superadmin@anubhav.com / Welcome1! (admin), raj.sharma@example.com / Welcome1!
+   (traveller).
+  - The DB is in-memory, so the smoke.test@example.com user I created during
+  testing vanishes on the next server restart — no seed files were modified,
+  nothing to clean up.
+
+✻ Crunched for 1h 19m 58s
+
+※ recap: Built the TravelHub freestyle Fiori app in app/managetravel on the existing CAP services, plus the approved register endpoint; all API checks pass. Next: do the manual browser walkthrough at http://localhost:4004/managetravel/webapp/index.html using the seed logins. (disable recaps in /config)
+
+❯ Regarding point 7, now we have the cost and currency field in the db          
+  travelledlocations, so use that to create donut for traveller. for donut      
+  chart for admin use total spend in each currency by all travellers. Regarding 
+   point 8, create seperate address entity, expose service, adapt data in csv,  
+  create addresses tab in admin screen.                                         
+
+● Let me check the current state of the schema and service — you mentioned
+  cost/currency now exist in TravelledLocations, so I'll verify what's actually
+  there before changing anything.
+
+  Read 4 files (ctrl+o to expand)
+
+● The user already added cost (Decimal) + currency to TravelledLocations, seeded
+   the CSV with cost;currency_code, and exposed Currencies in CatalogService. So
+   the point-7 backend is done; I only need frontend donut changes. Point 8
+  needs a new entity + service + CSV + UI.
+
+  One thing in your point 8 conflicts with the original spec and changes where I
+   build, so let me confirm before touching code:
+
+● User answered Claude's questions:
+  ⎿  · The original spec put the Addresses tab on the Traveller dashboard (AC 
+     #8), but you said "addresses tab in admin screen". Where should the new 
+     Addresses entity be managed? → Both screens (Recommended)
+     · How should the Traveller donut aggregate the new cost/currency? (Admin 
+     donut is already settled: total spend per currency across all travellers.) 
+     → Spend per destination (Recommended)
+
+● Both confirmed: Addresses on both screens (admin manages all; traveller real
+  CRUD), traveller donut = spend per destination (currency-aware), admin donut =
+   spend per currency. Implementing now.
+
+  First, the i18n keys for the new schema fields:
+
+  Listed 1 directory (ctrl+o to expand)
+
+● I'm back in plan mode. This is a continuation of the same TravelHub task — a
+  second enhancement round. Let me check the existing i18n keys, then update the
+   plan file with this new scope.
+
+  Read 1 file (ctrl+o to expand)
+
+● The user already did the cost/currency backend (schema, CSV, service, i18n). I
+   have full context. This is a refinement of the same task — updating the plan
+  file with the round-2 scope.
+
+● Updated plan
+  ⎿  /plan to preview
+
+  Read 1 file (ctrl+o to expand)
+
+● Updated plan
+  ⎿  /plan to preview
+
+● The plan is updated with the Round-2 scope. Here's what I'll implement once
+  approved:
+
+  Backend (you've already done cost/currency; remaining):
+  - db/schema.cds — add Addresses entity + Travellers.addresses composition
+  - srv/cat-service.cds — expose Addresses with the same row-level @restrict as
+  TravelledLocations
+  - db/i18n/* (all 4) — add Street, PostalCode, IsPrimary, Addresses keys
+  - db/data/anubhav.claude-Addresses.csv — seed addresses for existing
+  travellers
+
+  Frontend:
+  - Generalize SpendDonutChart to a value/name measure
+  - Traveller donut → spend per destination, currency-aware slices ("Paris
+  (EUR)")
+  - Admin donut → total spend per currency
+  - Traveller AddressesTab → real CRUD table on the addresses composition,
+  flushed by the existing single Save
+  - Admin dashboard → wrap travellers + a new Addresses management tab in an
+  IconTabBar (admin sees/edits all addresses, with its own Save)
+
+  AC #7 and #8 move from "adapted" to fully met.
+
+● User approved Claude's plan
+  ⎿  Plan saved to: ~\.claude\plans\prancy-percolating-lampson.md · /plan to 
+     edit
+     TravelHub Freestyle Fiori App — Implementation Plan
+
+     Context
+
+     The spec at .claude/specs/fiori_dev_spec.md describes a SAPUI5 freestyle
+     app ("TravelHub")
+     on top of the existing CAP services. During exploration I found the spec's
+     data
+     assumptions do not match the real backend, so the design adapts the spec to
+      the
+     actual services rather than implementing it verbatim.
+
+     Confirmed via srv/*.cds, handlers, .http test files and seed CSVs:
+
+     - AuthService /odata/v4/auth — POST login {loginName,password}, POST 
+     refresh {refreshToken},
+     GET me (Bearer). Returns {access,refresh,expiresIn} /
+     {id,loginName,firstName,lastName,roles[]}.
+     - CatalogService /odata/v4/catalog — Travellers, TravelledLocations,
+     Destinations,
+     TravellerStatus, AddressTypes, TravellerTypes. Row-level @restrict:
+     traveller sees
+     only own rows (userID = $user.email); ADMIN sees all.
+     - UserManagement /odata/v4/user-management (ADMIN only) — Users, Roles,
+     UserRoles,
+     functions lockUser/unlockUser(userId), actions
+     createUser/resetPassword/assignRole/unassignRole.
+     - Auth identity lives in Users+UserCredentials+UserRoles, not on
+     Travellers.
+     Travellers is the business profile linked by userID = email = 
+     Users.loginName.
+     - TravelledLocations has no amount/spend field. No Addresses entity exists.
+     - Seed logins (all password Welcome1!): admins superadmin@anubhav.com,
+     anubhav@anubhavtrainings.com; travellers e.g. raj.sharma@example.com.
+
+     User decisions (via AskUserQuestion)
+
+     1. Reuse app/managetravel (namespace stays anubhav.claude.managetravel, UI5
+      1.148, sap_horizon).
+     2. Approved a new public register action on AuthService.
+     3. Donut chart = trips per destination (count), computed in-controller (no
+     backend change).
+     4. Addresses tab = profile-edit of the Traveller's own row (no backend
+     change).
+
+     Backend change (approved — only this one)
+
+     - srv/auth-service.cds: add action 
+     register(firstName,lastName,email,password,phone,addressType)
+     returning RegisterResponse.
+     - srv/handlers/auth.handler.js: implement register — validates input,
+     enforces unique
+     email server-side (returns 409), creates Users(isLocked:true) +
+     UserCredentials
+     (bcrypt) + UserRoles('TRAVELLER') + a Travellers profile row
+     (type_code:'ST', status_code:'A'). Account is locked until an admin unlocks
+      it.
+
+     No other service endpoints added. Catalog/UserManagement/Auth used as-is.
+
+     Frontend architecture
+
+     App served same-origin by CAP at /managetravel/webapp/ → relative
+     /odata/v4/...
+     URLs, cookies work, no CORS.
+
+     - manifest.json — dataSources catalog (default model) + usermgmt (mgmt
+     model),
+     V4 models preload:false/earlyRequests:false (no metadata fetch before
+     auth),
+     libs add sap.viz + sap.ui.layout, routes login (""), adminDashboard
+     (admin),
+     travellerDashboard (traveller), rootView App, router controlId:"mainNav".
+     - Component.js — startup cookie check: reads th_access/th_refresh/th_user,
+     decodes JWT exp, rebuilds userModel, sets initial hash to the role
+     dashboard so a
+     browser refresh preserves login (AC #11).
+     - BaseController.js — all shared logic (AC #15):
+     getRouter/getUserModel/getODataModel/ getMgmtModel, cookie set/get/delete,
+     getAccessToken, _decodeJwt/isTokenExpired,
+     _ajax (jQuery; auto Bearer; 401→refresh→retry once), login
+     (login→me→persist),
+     refreshToken, ensureValidToken, attachAuthHeaderToODataModel (V4
+     changeHttpHeaders),
+     hydrateUserFromCookie, _guardRole, onLogout, showError.
+     Cookies: th_access (expiresIn), th_refresh (7d), th_user (session JSON);
+     SameSite=Strict, Secure only on https (documented dev caveat).
+     - App.view.xml / App.controller.js — persistent Shell → App → Page → Header
+      fragment
+       - NavContainer id="mainNav" (reused first view, AC #16). Logout lives in
+     the Header
+     so every page inherits it (AC #12/#13).
+     - Header.fragment.xml — Anubhav Trainings logo + title + user/role text +
+     Logout,
+     visible only when userModel>/loginName set.
+
+     Views / fragments
+
+     - Login (view+controller) + RegisterDialog.fragment — email/password,
+     Login,
+     "Register as Traveller" dialog. Client validates email/format+password
+     length; server
+     enforces uniqueness (AC #1–5). Redirects away if already authenticated.
+     - AdminDashboard (view+controller) + AdminTravellersTable.fragment +
+     SpendDonutChart.fragment — summary tiles (total users / active / locked /
+     total trips),
+     donut of trips-per-destination aggregated across all travellers, table
+     Name|Email|Role|Status|Switch. Data via _ajax GET to
+     user-management/Users?$expand=roles
+     and catalog/TravelledLocations?$expand=destination; lock toggle calls
+     lockUser/unlockUser then reloads (AC #6, #7-admin).
+     - TravellerDashboard (view+controller) + TravellerProfile.fragment +
+     AddressesTab.fragment + TravelledLocationsTab.fragment +
+     SpendDonutChart.fragment — profile row (icon + name + addressType/phone),
+     donut of
+     own trips per destination, IconTabBar: Addresses (edit own profile fields)
+     +
+     Travelled Locations (create/edit/delete bound to the Traveller's locations
+     composition). Single Save button →
+     getODataModel().submitBatch("travellerChanges");
+     all editable bindings use $$updateGroupId:"travellerChanges" (AC #7-10).
+     - Delete obsolete view/Main.view.xml + controller/Main.controller.js.
+     - Extend i18n/i18n.properties; minor css/style.css (login card centering).
+
+     Status — IMPLEMENTATION COMPLETE
+
+     All files written and on disk:
+
+     - Backend: srv/auth-service.cds (+register), srv/handlers/auth.handler.js
+     (register impl). npx cds compile srv passes.
+     - Frontend (app/managetravel/webapp/): manifest.json, Component.js,
+     controller/BaseController.js, controller/App.controller.js,
+     controller/Login.controller.js, controller/AdminDashboard.controller.js,
+     controller/TravellerDashboard.controller.js, view/App.view.xml,
+     view/Login.view.xml, view/AdminDashboard.view.xml,
+     view/TravellerDashboard.view.xml, fragments Header, RegisterDialog,
+     SpendDonutChart, AdminTravellersTable, TravellerProfile, AddressesTab,
+     TravelledLocationsTab, updated i18n/i18n.properties, css/style.css.
+     - Obsolete view/Main.view.xml + controller/Main.controller.js deleted.
+
+     Live-verified (server booted clean on :4004, all 3 OData services served):
+     - POST /odata/v4/auth/login (admin) → tokens, expiresIn=900.
+     - GET /odata/v4/auth/me (Bearer) → superadmin@anubhav.com, roles=ADMIN.
+     - POST /odata/v4/auth/register (new approved endpoint) → locked=true + the
+     "admin must unlock" message; creates
+     Users(isLocked)+credentials+role+Travellers row.
+
+     Live-verified — full API suite green:
+     - $metadata HTTP 200; GET /managetravel/webapp/index.html HTTP 200 (CAP
+     serves the app).
+     - Locked-user login → 401; duplicate register → 409 (AC #4/#5).
+     - Admin Users?$expand=roles → 14 users w/ role codes (AdminTravellersTable
+     source, AC #6).
+     - Admin TravelledLocations?$expand=destination → 15 trips w/
+     destination.name
+     (donut source, AC #7).
+     - register creates a Travellers row (type=ST, status=A, userID=email, AC
+     #3/#7/#8).
+     - Traveller raj.sharma@example.com sees only his own Travellers row
+     (row-level @restrict — confirms traveller dashboard scoping, AC #7-9).
+     - Full round-trip: register(locked) → login 401 → admin unlockUser 200 →
+     login succeeds (token, expiresIn=900) — AC #5/#6 end-to-end.
+
+     Remaining: none for code; API fully verified. Only the optional manual
+     browser
+     walkthrough below (UI rendering — cannot be done headlessly).
+
+     Acceptance-criteria traceability
+
+     ┌─────┬───────────────┬────────────────────────────────┬──────────────────┐
+     │  #  │   Criterion   │         Implemented by         │  Status vs spec  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 1   │ Login screen  │ Login view, default route      │ met              │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Admin +       │ AuthService.login + role       │                  │
+     │ 2   │ Traveller     │ routing                        │ met              │
+     │     │ login         │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Self-register │ RegisterDialog + approved      │ met (via         │
+     │ 3   │  popup        │ register action                │ approved         │
+     │     │               │                                │ endpoint)        │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │               │ Server-side 409 in register    │ met (server-enfo │
+     │ 4   │ Email unique  │ (catalog $filter not callable  │ rced)            │
+     │     │               │ anonymously)                   │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 5   │ Locked until  │ Users.isLocked:true on         │ met              │
+     │     │ admin unlocks │ register; login rejects locked │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Admin         │ AdminTravellersTable +         │                  │
+     │ 6   │ lock/unlock   │ lockUser/unlockUser            │ met              │
+     │     │ switch        │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Traveller     │ TravellerProfile +             │ met (Round 2:    │
+     │ 7   │ profile +     │ SpendDonutChart                │ real spend via   │
+     │     │ donut         │                                │ cost/currency)   │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │               │                                │ met (Round 2:    │
+     │ 8   │ Addresses tab │ AddressesTab +                 │ real Addresses   │
+     │     │               │ AdminAddressesTable            │ entity, both     │
+     │     │               │                                │ screens)         │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Travelled     │ TravelledLocationsTab on       │                  │
+     │ 9   │ Locations     │ locations composition          │ met              │
+     │     │ CRUD          │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 10  │ Single Save   │ submitBatch("travellerChanges" │ met              │
+     │     │ via V4        │ )                              │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ Cookie        │                                │                  │
+     │ 11  │ session       │ BaseController cookies +       │ met              │
+     │     │ survives      │ Component startup              │                  │
+     │     │ refresh       │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 12  │ Logout clears │ BaseController.onLogout in     │ met              │
+     │     │  cookie       │ Header                         │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 13  │ Branding      │ Header fragment in shell       │ met              │
+     │     │ every page    │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │     │ JWT Bearer on │                                │                  │
+     │ 14  │  every OData  │ attachAuthHeaderToODataModel   │ met              │
+     │     │ call          │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 15  │ Reusable Base │ controller/BaseController.js   │ met              │
+     │     │ Controller    │                                │                  │
+     ├─────┼───────────────┼────────────────────────────────┼──────────────────┤
+     │ 16  │ Reuse first   │ App.view.xml + NavContainer    │ met              │
+     │     │ view (shell)  │                                │                  │
+     └─────┴───────────────┴────────────────────────────────┴──────────────────┘
+
+     Verification
+
+     1. npx cds compile srv — already passes (re-run after any cds edit).
+     2. Start backend: cds watch (port 4004; server.js seeds roles + admin on
+     served).
+     3. Open http://localhost:4004/managetravel/webapp/index.html.
+     4. Login as superadmin@anubhav.com / Welcome1! → lands on Admin dashboard;
+     tiles + donut render; toggle a user's lock switch and confirm it persists
+     on reload.
+     5. Login as raj.sharma@example.com / Welcome1! → Traveller dashboard;
+     profile + donut; add/edit/delete a Travelled Location; press Save → one
+     $batch;
+     reload page → still logged in (cookie session, AC #11); Logout → returns to
+      Login.
+     6. Register a new traveller via the dialog → success toast ("admin must
+     unlock");
+     attempt login → rejected (locked); admin unlocks via switch → login now
+     succeeds.
+     7. Confirm every page shows the Anubhav Trainings header and Bearer is sent
+     (Network tab: Authorization: Bearer … on /odata/v4/catalog/*).
+
+     ---
+     Enhancement Round 2 — real spend donut + Addresses entity
+
+     Context
+
+     Round 1 adapted AC #7/#8 because the backend lacked spend and an Addresses
+     entity.
+     The user has since already added to the backend: cost : Decimal(15,2) +
+     currency : Currency on TravelledLocations (db/schema.cds), seeded
+     db/data/anubhav.claude-TravelledLocations.csv with cost;currency_code
+     columns,
+     exposed Currencies in srv/cat-service.cds, and added Cost/Currency
+     db/i18n keys. They now want AC #7/#8 done "for real".
+
+     User decisions (AskUserQuestion):
+     - Addresses tab on both screens: Admin = view/manage ALL travellers'
+     addresses;
+     Traveller = real CRUD on own addresses (replaces the profile-edit
+     adaptation).
+     - Traveller donut = spend per destination, currency-aware — slices split by
+     destination+currency (e.g. "Paris (EUR)") so sums stay currency-correct.
+     - Admin donut = total spend per currency across all travellers.
+
+     Backend (now user-approved)
+
+     - db/schema.cds: add Travellers.addresses : Composition of many Addresses 
+     on addresses.traveller = $self; and new entity Addresses : cuid { traveller
+      : Association to Travellers; addressType : Association to AddressTypes; 
+     street String(120); city String(100); postalCode String(20); country 
+     String(100); isPrimary Boolean default false; } with @title:'{i18n>…}' on
+     each field.
+     - srv/cat-service.cds: entity Addresses as projection on db.Addresses; with
+      the
+     same @restrict as TravelledLocations (ADMIN *; authenticated-user CRUD
+     where traveller.userID = $user.email).
+     - db/i18n/i18n.properties + _en + _de + _hi: add Street, PostalCode,
+     IsPrimary, Addresses keys (City/Country/AddressType already exist).
+     - db/data/anubhav.claude-Addresses.csv: seed 1–2 rows per existing
+     traveller
+     (c1c1c1c1-0001…0010), columns
+     ID;traveller_ID;addressType_code;street;city;postalCode;country;isPrimary.
+
+     Frontend
+
+     - fragment/SpendDonutChart.fragment.xml: generalise measure → {chart>value}
+     (name "Amount"), dimension {chart>name} ("Category"); both controllers now
+     emit chart>/data = [{name, value}] + chart>/title.
+     - controller/TravellerDashboard.controller.js _loadDonut: GET
+     catalog/TravelledLocations?$expand=destination (own rows); group by
+     destination.name + currency_code → slice "<dest> (<CUR>)", value = Σcost;
+     title "My Spend per Destination". Add onAddAddress/onDeleteAddress; bind
+     the
+     Addresses table to the traveller's addresses composition
+     ($$updateGroupId:'travellerChanges', $expand:'addressType') — existing
+     single
+     Save (submitBatch('travellerChanges')) flushes address changes too.
+     - fragment/AddressesTab.fragment.xml: replace the profile-edit form with a
+     real
+     CRUD Table (Type [Select /AddressTypes], Street, City, Postal, Country,
+     Primary [Switch]) + Add/Delete toolbar.
+     - controller/AdminDashboard.controller.js: admin donut → group ALL trips by
+     currency_code, value = Σcost, title "Total Spend per Currency"; tiles
+     unchanged. Add admin Addresses CRUD on the V4 default model
+     (/Addresses?$expand=traveller,addressType, deferred group adminAddr):
+     onAddAddress/onDeleteAddress/onSaveAddresses.
+     - view/AdminDashboard.view.xml: wrap the travellers table + new admin
+     addresses
+     fragment in an IconTabBar (tabs "Travellers", "Addresses"); tiles + donut
+     stay
+     above; add a Save button for the addresses tab.
+     - fragment/AdminAddressesTable.fragment.xml: new — table of ALL addresses
+     (Traveller email, Type, Street, City, Postal, Country, Primary) +
+     Add/Delete/Save.
+
+     Verification (additions)
+
+     1. npx cds compile srv passes; restart server (in-memory DB redeploys,
+     loads the
+     new Addresses CSV).
+     2. GET /odata/v4/catalog/Addresses with admin Bearer → all seeded rows;
+     with
+     traveller Bearer (raj.sharma@example.com) → only own rows (row-level
+     restrict).
+     3. TravelledLocations rows carry cost + currency_code; confirm donut
+     aggregations: traveller per destination(currency), admin per currency.
+     4. Browser: Admin screen → Addresses tab lists all, Add/Delete/Save works;
+     donut
+     shows spend per currency. Traveller screen → Addresses tab CRUD + batched
+     Save;
+     donut shows spend per destination.
+
+● Approved. Implementing Round 2. Starting with the backend.
+
+  1. db/schema.cds — add Addresses entity + Travellers.addresses composition:
+
+● Update(db\schema.cds)  ⎿  Added 2 lines
+      56      userID      : String(100);
+      57      @title: '{i18n>Locations}'
+      58      locations   : Composition of many TravelledLocations on loc
+          ations.traveller = $self;
+      59 +    @title: '{i18n>Addresses}'                                 
+      60 +    addresses   : Composition of many Addresses on addresses.tr
+         +aveller = $self;                                               
+      61  }
+      62  
+      63  annotate Travellers with {
+
+● Update(db\schema.cds)
+  ⎿  Added 21 lines
+       86      notes       : LargeString;
+       87  }
+       88  
+       89 +// ─── Addresses ─────────────────────────────────────────────
+          +───────────────────                                           
+       90 +                                                              
+       91 +entity Addresses : cuid {                                     
+       92 +    @title: '{i18n>Traveller}'                                
+       93 +    traveller   : Association to Travellers;                  
+       94 +    @title: '{i18n>AddressType}'                              
+       95 +    addressType : Association to AddressTypes;                
+       96 +    @mandatory                                                
+       97 +    @title: '{i18n>Street}'                                   
+       98 +    street      : String(120);                                
+       99 +    @mandatory                                                
+      100 +    @title: '{i18n>City}'                                     
+      101 +    city        : String(100);                                
+      102 +    @title: '{i18n>PostalCode}'                               
+      103 +    postalCode  : String(20);                                 
+      104 +    @title: '{i18n>Country}'                                  
+      105 +    country     : String(100);                                
+      106 +    @title: '{i18n>IsPrimary}'                                
+      107 +    isPrimary   : Boolean default false;                      
+      108 +}                                                             
+      109 +                                                              
+      110  // ─── Users ─────────────────────────────────────────────────
+           ───────────────────
+      111  
+      112  entity Users : cuid {
+
+● 2. srv/cat-service.cds — expose Addresses with the same row-level restrict as 
+  TravelledLocations:
+
+● Update(srv\cat-service.cds)
+  ⎿  Added 6 lines
+      23      entity TravelledLocations as projection on db.TravelledLoca
+          tions;
+      24  
+      25      @restrict: [
+      26 +        { grant: '*',                                 to: 'ADMI
+         +N' },                                                          
+      27 +        { grant: ['READ','CREATE','UPDATE','DELETE'], to: 'auth
+         +enticated-user', where: 'traveller.userID = $user.email' }     
+      28 +    ]                                                          
+      29 +    entity Addresses          as projection on db.Addresses;   
+      30 +                                                               
+      31 +    @restrict: [                                               
+      32          { grant: '*',    to: 'ADMIN' },
+      33          { grant: 'READ', to: 'authenticated-user' }
+      34      ]
+
+● 3. i18n keys for the new fields — reading the other locale files to add
+  consistently:
+
+  Read 3 files (ctrl+o to expand)
+
+● Update(db\i18n\i18n.properties)
+  ⎿  Added 6 lines
+      36  Currency    = Currency
+      37  Notes       = Notes
+      38  
+      39 +# ─── Address Fields ──────────────────────────────────────────
+         +────────────────                                               
+      40 +Addresses  = Addresses                                         
+      41 +Street     = Street                                            
+      42 +PostalCode = Postal Code                                       
+      43 +IsPrimary  = Primary Address                                   
+      44 +                                                               
+      45  # ─── Users Fields ────────────────────────────────────────────
+          ────────────────
+      46  LoginName = Login Name
+      47  IsLocked  = Account Locked
+
+● Update(db\i18n\i18n_en.properties)
+  ⎿  Added 6 lines
+      36  Currency    = Currency
+      37  Notes       = Notes
+      38  
+      39 +# ─── Address Fields ──────────────────────────────────────────
+         +────────────────                                               
+      40 +Addresses  = Addresses                                         
+      41 +Street     = Street                                            
+      42 +PostalCode = Postal Code                                       
+      43 +IsPrimary  = Primary Address                                   
+      44 +                                                               
+      45  # ─── Users Fields ────────────────────────────────────────────
+          ────────────────
+      46  LoginName = Login Name
+      47  IsLocked  = Account Locked
+
+● Update(db\i18n\i18n_de.properties)
+  ⎿  Added 6 lines
+      36  Currency    = Währung
+      37  Notes       = Notizen
+      38  
+      39 +# ─── Adressfelder (Address Fields) ───────────────────────────
+         +────────────────                                               
+      40 +Addresses  = Adressen                                          
+      41 +Street     = Straße                                            
+      42 +PostalCode = Postleitzahl                                      
+      43 +IsPrimary  = Primäradresse                                     
+      44 +                                                               
+      45  # ─── Benutzerfelder (Users Fields) ───────────────────────────
+          ────────────────
+      46  LoginName = Anmeldename
+      47  IsLocked  = Gesperrt
+
+● Update(db\i18n\i18n_hi.properties)
+  ⎿  Added 6 lines
+      36  Currency    = मुद्रा
+      37  Notes       = टिप्पणियाँ
+      38  
+      39 +# ─── पता फ़ील्ड (Address Fields) ─────────────────────────────────
+         +────────────                                                   
+      40 +Addresses  = पते                                                
+      41 +Street     = सड़क                                               
+      42 +PostalCode = डाक कोड                                             
+      43 +IsPrimary  = प्राथमिक पता                                          
+      44 +                                                               
+      45  # ─── उपयोगकर्ता फ़ील्ड (Users Fields) ──────────────────────────────
+          ──────────
+      46  LoginName = लॉगिन नाम
+      47  IsLocked  = खाता बंद
+
+● 4. Seed db/data/anubhav.claude-Addresses.csv:
+
+● Write(db\data\anubhav.claude-Addresses.csv)
+  ⎿  Wrote 15 lines to db\data\anubhav.claude-Addresses.csv
+        sPrimaryller_ID;addressType_code;street;city;postalCode;country;i
+      2 a0000001-0000-4000-a000-000000000001;c1c1c1c1-0001-4111-8111-1111
+        11111101;H;12 MG Road;Bengaluru;560001;India;true
+        11111101;O;Tower B, Tech Park;Bengaluru;560103;India;false11-1111
+      4 a0000001-0000-4000-a000-000000000003;c1c1c1c1-0002-4111-8111-1111
+        11111102;H;45 Marine Drive;Mumbai;400020;India;true
+        11111103;H;88 Madison Ave;New York;10016;USA;true3-4111-8111-1111
+      6 a0000001-0000-4000-a000-000000000005;c1c1c1c1-0003-4111-8111-1111
+        11111103;O;200 Park Avenue;New York;10166;USA;false
+      7 a0000001-0000-4000-a000-0000
+     … +20 lines (ctrl+o to expand)
+
+● Validate the CDS compiles with the new entity:
+
+● Bash(cd 'C:\claude\anubhav-claude' && npx cds compile srv 2>&1 | grep -iE
+      "error|warn|Addresses" | head -20; echo "exit: $?")
+  ⎿          "addresses": {
+               "@title": "{i18n>Addresses}",
+               "target": "CatalogService.Addresses",
+     … +9 lines (ctrl+o to expand)
+
+● CDS compiles clean — backend done. Now the frontend.
+
+  5. Generalize the donut fragment (measure value, dimension name):
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(app\managetravel\webapp\fragment\SpendDonutChart.fragment.xml)
+  ⎿  Added 4 lines, removed 4 lines
+      10              <viz:dataset>
+      11                  <vizData:FlattenedDataset data="{chart>/data}">
+      12                      <vizData:dimensions>
+      13 -                        <vizData:DimensionDefinition name="Dest
+         -ination" value="{chart>name}"/>                                
+      13 +                        <vizData:DimensionDefinition name="Cate
+         +gory" value="{chart>name}"/>                                   
+      14                      </vizData:dimensions>
+      15                      <vizData:measures>
+      16 -                        <vizData:MeasureDefinition name="Trips"
+         - value="{chart>count}"/>                                       
+      16 +                        <vizData:MeasureDefinition name="Amount
+         +" value="{chart>value}"/>                                      
+      17                      </vizData:measures>
+      18                  </vizData:FlattenedDataset>
+      19              </viz:dataset>
+      20              <viz:feeds>
+      21 -                <vizFeed:FeedItem uid="size" type="Measure" val
+         -ues="Trips"/>                                                  
+      22 -                <vizFeed:FeedItem uid="color" type="Dimension" 
+         -values="Destination"/>                                         
+      21 +                <vizFeed:FeedItem uid="size" type="Measure" val
+         +ues="Amount"/>                                                 
+      22 +                <vizFeed:FeedItem uid="color" type="Dimension" 
+         +values="Category"/>                                            
+      23              </viz:feeds>
+      24          </viz:VizFrame>
+      25      </Panel>
+
+● 6. Traveller dashboard controller — spend-per-destination donut + Addresses 
+  CRUD:
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(app\managetravel\webapp\controller\TravellerDashboard.controller.js)
+  ⎿  Added 1 line, removed 1 line
+      11      return BaseController.extend("anubhav.claude.managetravel.c
+          ontroller.TravellerDashboard", {
+      12  
+      13          onInit: function () {
+      14 -            this.getView().setModel(new JSONModel({ title: "My 
+         -Trips per Destination", data: [] }), "chart");                 
+      14 +            this.getView().setModel(new JSONModel({ title: "My 
+         +Spend per Destination", data: [] }), "chart");                 
+      15              this.getRouter().getRoute("travellerDashboard").att
+          achPatternMatched(this._onMatched, this);
+      16          },
+      17  
+
+● Update(app\managetravel\webapp\controller\TravellerDashboard.controller.js)
+  ⎿  Added 9 lines, removed 5 lines
+      53              );
+      54          },
+      55  
+      56 +        // Spend per destination, currency-aware: slices split 
+         +by destination+currency                                        
+      57 +        // (e.g. "Paris (EUR)") so amounts across currencies ar
+         +e never summed together.                                       
+      58          _loadDonut: function () {
+      59              var that = this;
+      60              this._ajax(TRIPS_URL, "GET").then(
+      61                  function (oRes) {
+      60 -                    var mCounts = {};                          
+      62 +                    var mSpend = {};                           
+      63                      (oRes.value || []).forEach(function (t) {
+      62 -                        var sName = (t.destination && (t.destin
+         -ation.name || t.destination.city)) || "Unknown";               
+      63 -                        mCounts[sName] = (mCounts[sName] || 0) 
+         -+ 1;                                                           
+      64 +                        var sDest = (t.destination && (t.destin
+         +ation.name || t.destination.city)) || "Unknown";               
+      65 +                        var sCur  = t.currency_code || "—";    
+      66 +                        var sKey  = sDest + " (" + sCur + ")"; 
+      67 +                        mSpend[sKey] = (mSpend[sKey] || 0) + (p
+         +arseFloat(t.cost) || 0);                                       
+      68                      });
+      69                      that.getView().getModel("chart").setPropert
+          y("/data",
+      66 -                        Object.keys(mCounts).map(function (k) {
+      67 -                            return { name: k, count: mCounts[k]
+         - };                                                            
+      70 +                        Object.keys(mSpend).map(function (k) { 
+      71 +                            return { name: k, value: Math.round
+         +(mSpend[k] * 100) / 100 };                                     
+      72                          }));
+      73                  },
+      74                  function (jqXHR) { that.showError(jqXHR); }
+
+● Update(app\managetravel\webapp\controller\TravellerDashboard.controller.js)
+  ⎿  Added 31 lines, removed 1 line
+      105              oTable.removeSelections(true);
+      106          },
+      107  
+      108 -        // Single Save — flushes queued profile + location cha
+          -nges in one $batch.                                           
+      108 +        _addressesBinding: function () {                      
+      109 +            var oTable = this.byId("addressesTable");         
+      110 +            return oTable && oTable.getBinding("items");      
+      111 +        },                                                    
+      112 +                                                              
+      113 +        onAddAddress: function () {                           
+      114 +            var oBinding = this._addressesBinding();          
+      115 +            if (!oBinding) {                                  
+      116 +                MessageToast.show("Profile is still loading — 
+          +please retry.");                                              
+      117 +                return;                                       
+      118 +            }                                                 
+      119 +            oBinding.create({ street: "", city: "", isPrimary:
+          + false });                                                    
+      120 +        },                                                    
+      121 +                                                              
+      122 +        onDeleteAddress: function () {                        
+      123 +            var oTable = this.byId("addressesTable");         
+      124 +            var aItems = oTable.getSelectedItems();           
+      125 +            if (!aItems.length) {                             
+      126 +                MessageToast.show("Select at least one address
+          + to delete.");                                                
+      127 +                return;                                       
+      128 +            }                                                 
+      129 +            var that = this;                                  
+      130 +            aItems.forEach(function (oItem) {                 
+      131 +                oItem.getBindingContext().delete(GROUP).catch(
+          +function (oErr) {                                             
+      132 +                    that.showError(oErr);                     
+      133 +                });                                           
+      134 +            });                                               
+      135 +            oTable.removeSelections(true);                    
+      136 +        },                                                    
+      137 +                                                              
+      138 +        // Single Save — flushes queued profile + location + a
+          +ddress changes in one $batch.                                 
+      139          onSave: function () {
+      140              var that = this;
+      141              var oModel = this.getODataModel();
+● 7. Replace AddressesTab.fragment.xml with real CRUD on the addresses 
+  composition:
+
+● Write(app\managetravel\webapp\fragment\AddressesTab.fragment.xml)
+  ⎿  Added 37 lines, removed 21 lines
+       1 -<core:FragmentDefinition xmlns="sap.m" xmlns:core="sap.ui.core"
+         - xmlns:f="sap.ui.layout.form">                                 
+       2 -    <f:SimpleForm editable="true" layout="ResponsiveGridLayout"
+       3 -                  title="My Profile"                           
+       4 -                  labelSpanXL="3" labelSpanL="3" labelSpanM="4"
+         - labelSpanS="12"                                               
+       5 -                  columnsXL="1" columnsL="1" columnsM="1">     
+       6 -        <f:content>                                            
+       7 -            <Label text="First Name" required="true"/>         
+       8 -            <Input value="{firstName}"/>                       
+       9 -            <Label text="Last Name" required="true"/>          
+      10 -            <Input value="{lastName}"/>                        
+      11 -            <Label text="Email"/>                              
+      12 -            <Input value="{email}" editable="false"/>          
+      13 -            <Label text="Phone"/>                              
+      14 -            <Input value="{phone}"/>                           
+      15 -            <Label text="Address Type"/>                       
+      16 -            <Select selectedKey="{addressType_code}"           
+      17 -                    items="{path: '/AddressTypes', templateShar
+         -eable: false}">                                                
+      18 -                <core:Item key="{code}" text="{name}"/>        
+      19 -            </Select>                                          
+      20 -        </f:content>                                           
+      21 -    </f:SimpleForm>                                            
+       1 +<core:FragmentDefinition xmlns="sap.m" xmlns:core="sap.ui.core"
+         +>                                                              
+       2 +    <Table id="addressesTable" mode="MultiSelect"              
+       3 +           items="{path: 'addresses', parameters: {$$updateGrou
+         +pId: 'travellerChanges', $expand: 'addressType'}}">            
+       4 +        <headerToolbar>                                        
+       5 +            <OverflowToolbar>                                  
+       6 +                <Title text="My Addresses" level="H3"/>        
+       7 +                <ToolbarSpacer/>                               
+       8 +                <Button icon="sap-icon://add" text="Add" press=
+         +".onAddAddress"/>                                              
+       9 +                <Button icon="sap-icon://delete" text="Delete" 
+         +type="Transparent"                                             
+      10 +                        press=".onDeleteAddress"/>             
+      11 +            </OverflowToolbar>                                 
+      12 +        </headerToolbar>                                       
+      13 +        <columns>                                              
+      14 +            <Column><Text text="Type"/></Column>               
+      15 +            <Column><Text text="Street"/></Column>             
+      16 +            <Column><Text text="City"/></Column>               
+      17 +            <Column><Text text="Postal Code"/></Column>        
+      18 +            <Column><Text text="Country"/></Column>            
+      19 +            <Column hAlign="Center"><Text text="Primary"/></Col
+         +umn>                                                           
+      20 +        </columns>                                             
+      21 +        <items>                                                
+      22 +            <ColumnListItem>                                   
+      23 +                <cells>                                        
+      24 +                    <Select selectedKey="{addressType_code}"   
+      25 +                            forceSelection="false"             
+      26 +                            items="{path: '/AddressTypes', temp
+         +lateShareable: false}">                                        
+      27 +                        <core:Item key="{code}" text="{name}"/>
+      28 +                    </Select>                                  
+      29 +                    <Input value="{street}" placeholder="Street
+         +"/>                                                            
+      30 +                    <Input value="{city}" placeholder="City"/> 
+      31 +                    <Input value="{postalCode}" placeholder="Po
+         +stal code"/>                                                   
+      32 +                    <Input value="{country}" placeholder="Count
+         +ry"/>                                                          
+      33 +                    <Switch state="{isPrimary}" customTextOn="Y
+         +es" customTextOff="No"/>                                       
+      34 +                </cells>                                       
+      35 +            </ColumnListItem>                                  
+      36 +        </items>                                               
+      37 +    </Table>                                                   
+      38  </core:FragmentDefinition>
+
+● 8. Admin dashboard controller — spend-per-currency donut + admin Addresses 
+  CRUD:
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(app\managetravel\webapp\controller\AdminDashboard.controller.js)
+  ⎿  Added 3 lines, removed 2 lines
+       6  ], function (BaseController, JSONModel, Filter, FilterOperator)
+           {
+       7      "use strict";
+       8  
+       9 -    var USERS_URL = "/odata/v4/user-management/Users?$expand=ro
+         -les";                                                          
+      10 -    var TRIPS_URL = "/odata/v4/catalog/TravelledLocations?$expa
+         -nd=destination";                                               
+       9 +    var ADDR_GROUP = "adminAddr";                              
+      10 +    var USERS_URL  = "/odata/v4/user-management/Users?$expand=r
+         +oles";                                                         
+      11 +    var TRIPS_URL  = "/odata/v4/catalog/TravelledLocations?$exp
+         +and=destination";                                              
+      12  
+      13      return BaseController.extend("anubhav.claude.managetravel.c
+          ontroller.AdminDashboard", {
+      14  
+
+● Update(app\managetravel\webapp\controller\AdminDashboard.controller.js)
+  ⎿  Added 1 line, removed 1 line
+      14  
+      15          onInit: function () {
+      16              this.getView().setModel(new JSONModel({ users: [], 
+          stats: {} }), "admin");
+      17 -            this.getView().setModel(new JSONModel({ title: "Tri
+         -ps per Destination", data: [] }), "chart");                    
+      17 +            this.getView().setModel(new JSONModel({ title: "Tot
+         +al Spend per Currency", data: [] }), "chart");                 
+      18              this.getRouter().getRoute("adminDashboard").attachP
+          atternMatched(this._onMatched, this);
+      19          },
+      20  
+
+● Update(app\managetravel\webapp\controller\AdminDashboard.controller.js)
+  ⎿  Added 50 lines, removed 5 lines
+       71              );
+       72          },
+       73  
+       74 +        // Total spend grouped by currency across ALL travelle
+          +rs' trips.                                                    
+       75          _aggregate: function (aTrips) {
+       75 -            var mCounts = {};                                 
+       76 +            var mSpend = {};                                  
+       77              aTrips.forEach(function (t) {
+       77 -                var sName = (t.destination && (t.destination.n
+          -ame || t.destination.city)) || "Unknown";                     
+       78 -                mCounts[sName] = (mCounts[sName] || 0) + 1;   
+       78 +                var sCur = t.currency_code || "—";            
+       79 +                mSpend[sCur] = (mSpend[sCur] || 0) + (parseFlo
+          +at(t.cost) || 0);                                             
+       80              });
+       80 -            return Object.keys(mCounts).map(function (k) {    
+       81 -                return { name: k, count: mCounts[k] };        
+       81 +            return Object.keys(mSpend).map(function (k) {     
+       82 +                return { name: k, value: Math.round(mSpend[k] 
+          +* 100) / 100 };                                               
+       83              });
+       84          },
+       85  
+       86 +        // ── Admin Addresses CRUD (V4 default model, deferred
+          + 'adminAddr' group) ──                                        
+       87 +        _adminAddrBinding: function () {                      
+       88 +            var oTable = this.byId("adminAddressesTable");    
+       89 +            return oTable && oTable.getBinding("items");      
+       90 +        },                                                    
+       91 +                                                              
+       92 +        onAddAddress: function () {                           
+       93 +            var oBinding = this._adminAddrBinding();          
+       94 +            if (!oBinding) {                                  
+       95 +                return;                                       
+       96 +            }                                                 
+       97 +            oBinding.create({ street: "", city: "", isPrimary:
+          + false });                                                    
+       98 +        },                                                    
+       99 +                                                              
+      100 +        onDeleteAddress: function () {                        
+      101 +            var oTable = this.byId("adminAddressesTable");    
+      102 +            var aItems = oTable.getSelectedItems();           
+      103 +            if (!aItems.length) {                             
+      104 +                return;                                       
+      105 +            }                                                 
+      106 +            var that = this;                                  
+      107 +            aItems.forEach(function (oItem) {                 
+      108 +                oItem.getBindingContext().delete(ADDR_GROUP).c
+          +atch(function (oErr) {                                        
+      109 +                    that.showError(oErr);                     
+      110 +                });                                           
+      111 +            });                                               
+      112 +            oTable.removeSelections(true);                    
+      113 +        },                                                    
+      114 +                                                              
+      115 +        onSaveAddresses: function () {                        
+      116 +            var that = this;                                  
+      117 +            var oModel = this.getODataModel();                
+      118 +            oModel.submitBatch(ADDR_GROUP).then(              
+      119 +                function () {                                 
+      120 +                    if (oModel.hasPendingChanges(ADDR_GROUP)) 
+          +{                                                             
+      121 +                        that.showError("Some address changes c
+          +ould not be saved. Please review and retry.");                
+      122 +                    } else {                                  
+      123 +                        that.byId("adminAddressesTable").getBi
+          +nding("items").refresh();                                     
+      124 +                    }                                         
+      125 +                },                                            
+      126 +                function (oErr) { that.showError(oErr); }     
+      127 +            );                                                
+      128 +        },                                                    
+      129 +                                                              
+      130          onToggleLock: function (oEvent) {
+      131              var oCtx = oEvent.getSource().getBindingContext("a
+           dmin");
+      132              var oRow = oCtx.getObject();
+
+● 9. Restructure Admin view with an IconTabBar (Travellers + Addresses) and the 
+  new admin addresses fragment:
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(app\managetravel\webapp\view\AdminDashboard.view.xml)
+  ⎿  Added 12 lines, removed 3 lines
+      31                      </GenericTile>
+      32                  </HBox>
+      33  
+      34 -                <!-- 2. Donut: trips per destination (all trave
+         -llers) -->                                                     
+      34 +                <!-- 2. Donut: total spend per currency (all tr
+         +avellers) -->                                                  
+      35                  <core:Fragment fragmentName="anubhav.claude.man
+          agetravel.fragment.SpendDonutChart" type="XML"/>
+      36  
+      37 -                <!-- 3. Travellers table with lock/unlock -->  
+      38 -                <core:Fragment fragmentName="anubhav.claude.man
+         -agetravel.fragment.AdminTravellersTable" type="XML"/>          
+      37 +                <!-- 3. Tabs: Travellers (lock/unlock) + Addres
+         +ses (manage all) -->                                           
+      38 +                <IconTabBar id="adminTabs" expandable="false" c
+         +lass="sapUiResponsiveMargin">                                  
+      39 +                    <items>                                    
+      40 +                        <IconTabFilter text="Travellers" icon="
+         +sap-icon://people-connected" key="travellers">                 
+      41 +                            <core:Fragment fragmentName="anubha
+         +v.claude.managetravel.fragment.AdminTravellersTable" type="XML"
+         +/>                                                             
+      42 +                        </IconTabFilter>                       
+      43 +                        <IconTabFilter text="Addresses" icon="s
+         +ap-icon://addresses" key="addresses">                          
+      44 +                            <core:Fragment fragmentName="anubha
+         +v.claude.managetravel.fragment.AdminAddressesTable" type="XML"/
+         +>                                                              
+      45 +                        </IconTabFilter>                       
+      46 +                    </items>                                   
+      47 +                </IconTabBar>                                  
+      48              </VBox>
+      49          </content>
+      50      </Page>
+
+● 10. New AdminAddressesTable.fragment.xml (admin manages all travellers' 
+  addresses):
+
+● Write(app\managetravel\webapp\fragment\AdminAddressesTable.fragment.xml)
+  ⎿  Wrote 47 lines to
+     app\managetravel\webapp\fragment\AdminAddressesTable.fragment.xml
+       2     <Table id="adminAddressesTable" mode="MultiSelect".ui.core">
+       3            growing="true" growingThreshold="20"
+       4            items="{path: '/Addresses', parameters: {$$updateGrou
+       5         <headerToolbar>nd: 'traveller,addressType'}}">
+       6             <OverflowToolbar>
+       7                 <Title text="All Addresses" level="H3"/>
+       9                 <Button icon="sap-icon://add" text="Add" press="
+         .onAddAddress"/>
+      10                 <Button icon="sap-icon://delete" text="Delete" t
+         ype="Transparent"
+     … +45 lines (ctrl+o to expand)
+
+● All code changes are in. Restarting the server so the in-memory DB redeploys
+  with the new Addresses entity + seed data:
+
+● PowerShell($c = Get-NetTCPConnection -LocalPort 4004 -State Listen
+            -ErrorAction SilentlyContinue
+            if ($c) { $c.OwningProcess | Select-Object -Unique | ForEach-Object
+            { Stop…)
+  ⎿  stopped PID 52064
+
+● Background command "Start CAP server in background" failed with exit code 127
+
+● Old server stopped. Starting fresh so the new schema + Addresses seed load:
+
+● Bash(cd 'C:\claude\anubhav-claude' && npm start)
+  ⎿  Running in the background (↓ to manage)
+
+● Bash(sleep 8; grep -iE "listening|error|Addresses|deployed"
+      'C:\Users\conta\AppData\Local\Temp\claude\C--claude-anubhav-claude\a0f105f
+      f-59c2-4979-98d9-9f765284727b\t…)
+  ⎿    > init from db\data\anubhav.claude-Addresses.csv
+     /> successfully deployed to in-memory database.
+     [cds] - server listening on { url: 'http://localhost:4004' }
+
+● Server up, Addresses CSV loaded and deployed. Running smoke tests for the new
+  entity + cost/currency:
+
+● Bash(cd 'C:\claude\anubhav-claude'
+      AT=$(curl -s -X POST http://localhost:4004/odata/v4/auth/login -H
+      "Content-Type: application/json" -d '{"loginName":"superadmin@an…)
+  ⎿  --- admin: all Addresses (expect 14) ---
+     count=14 sample={trav:raj.sharma@example.com, type:Home, city:Bengalur
+     u, primary:true}
+     … +5 lines (ctrl+o to expand)
+● Round 2 complete and verified end-to-end against the running server.
+
+  Round 2 — done
+
+  Backend (Addresses entity; you'd already done cost/currency):
+  - db/schema.cds — new Addresses entity + Travellers.addresses composition
+  - srv/cat-service.cds — Addresses exposed with the same row-level @restrict as
+   TravelledLocations (ADMIN all; traveller only own)
+  - db/i18n/* (all 4 locales) — Street, PostalCode, IsPrimary, Addresses keys
+  - db/data/anubhav.claude-Addresses.csv — 14 seeded addresses across the 10
+  travellers
+
+  Frontend:
+  - SpendDonutChart generalized to a value/name measure
+  - Traveller donut → spend per destination, currency-aware (slices like Paris 
+  (EUR) so currencies never sum together); title "My Spend per Destination"
+  - Admin donut → total spend per currency; title "Total Spend per Currency"
+  - Traveller Addresses tab → real CRUD table on the addresses composition,
+  flushed by the existing single Save (travellerChanges batch)
+  - Admin dashboard → tiles + donut on top, then an IconTabBar with Travellers
+  (lock/unlock) and a new Addresses tab managing all travellers' addresses (own
+  Add/Delete/Save via a deferred adminAddr batch, with a Traveller picker per
+  row)
+
+  Verified live (npx cds compile srv clean; server restarted, Addresses CSV
+  deployed):
+
+  ┌──────────────────────────────────────┬──────────────────────────────────┐
+  │                Check                 │              Result              │
+  ├──────────────────────────────────────┼──────────────────────────────────┤
+  │ Admin reads all Addresses (expanded  │ ✅ 14 rows                       │
+  │ traveller/type)                      │                                  │
+  ├──────────────────────────────────────┼──────────────────────────────────┤
+  │ Traveller raj.sharma reads Addresses │ ✅ only his 2 (row-level         │
+  │                                      │ restrict)                        │
+  ├──────────────────────────────────────┼──────────────────────────────────┤
+  │ TravelledLocations carry             │ ✅ 18 trips                      │
+  │ cost/currency_code                   │                                  │
+  ├──────────────────────────────────────┼──────────────────────────────────┤
+  │ Admin spend-per-currency aggregation │ ✅ EUR 2860, USD 3260, INR 2990, │
+  │                                      │  AED 2640, CNY 3025              │
+  └──────────────────────────────────────┴──────────────────────────────────┘
+
+  AC #7 and #8 are now fully met (no longer adapted). The plan file reflects
+  this.
+
+  The dev server is running on http://localhost:4004 for the manual browser
+  walkthrough — log in as superadmin@anubhav.com / Welcome1! (admin: Addresses
+  tab + spend-per-currency donut) or raj.sharma@example.com / Welcome1!
+  (traveller: Addresses CRUD + spend-per-destination donut, one Save). Only the
+  visual UI render remains unverifiable headlessly.
+
+✻ Churned for 30m 23s

@@ -1,0 +1,51 @@
+<mvc:View controllerName="anubhav.claude.managetravel.controller.AdminDashboard"
+          xmlns:mvc="sap.ui.core.mvc"
+          xmlns:core="sap.ui.core"
+          xmlns="sap.m"
+          displayBlock="true">
+    <Page id="adminPage" title="Admin Dashboard" showHeader="true">
+        <content>
+            <VBox class="sapUiContentPadding">
+                <!-- 1. Summary tiles -->
+                <HBox wrap="Wrap" class="sapUiSmallMarginBottom">
+                    <GenericTile class="thTile sapUiTinyMargin" header="Total Users"
+                                 press=".onNoop">
+                        <TileContent>
+                            <NumericContent value="{admin>/stats/totalUsers}" valueColor="Neutral"/>
+                        </TileContent>
+                    </GenericTile>
+                    <GenericTile class="thTile sapUiTinyMargin" header="Active" press=".onNoop">
+                        <TileContent>
+                            <NumericContent value="{admin>/stats/active}" valueColor="Good"/>
+                        </TileContent>
+                    </GenericTile>
+                    <GenericTile class="thTile sapUiTinyMargin" header="Locked" press=".onNoop">
+                        <TileContent>
+                            <NumericContent value="{admin>/stats/locked}" valueColor="Error"/>
+                        </TileContent>
+                    </GenericTile>
+                    <GenericTile class="thTile sapUiTinyMargin" header="Total Trips" press=".onNoop">
+                        <TileContent>
+                            <NumericContent value="{admin>/stats/totalTrips}" valueColor="Neutral"/>
+                        </TileContent>
+                    </GenericTile>
+                </HBox>
+
+                <!-- 2. Donut: total spend per currency (all travellers) -->
+                <core:Fragment fragmentName="anubhav.claude.managetravel.fragment.SpendDonutChart" type="XML"/>
+
+                <!-- 3. Tabs: Travellers (lock/unlock) + Addresses (manage all) -->
+                <IconTabBar id="adminTabs" expandable="false" class="sapUiResponsiveMargin">
+                    <items>
+                        <IconTabFilter text="Travellers" icon="sap-icon://people-connected" key="travellers">
+                            <core:Fragment fragmentName="anubhav.claude.managetravel.fragment.AdminTravellersTable" type="XML"/>
+                        </IconTabFilter>
+                        <IconTabFilter text="Addresses" icon="sap-icon://addresses" key="addresses">
+                            <core:Fragment fragmentName="anubhav.claude.managetravel.fragment.AdminAddressesTable" type="XML"/>
+                        </IconTabFilter>
+                    </items>
+                </IconTabBar>
+            </VBox>
+        </content>
+    </Page>
+</mvc:View>

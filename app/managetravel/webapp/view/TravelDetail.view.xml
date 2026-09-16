@@ -1,0 +1,92 @@
+<mvc:View controllerName="anubhav.claude.managetravel.controller.TravelDetail"
+          xmlns:mvc="sap.ui.core.mvc"
+          xmlns:form="sap.ui.layout.form"
+          xmlns="sap.m"
+          displayBlock="true">
+    <Page id="travelDetailPage"
+          title="Travel Details"
+          showNavButton="true"
+          navButtonPress=".onNavBack">
+        <content>
+            <ObjectHeader id="travelHeader"
+                          title="{destination/name}"
+                          intro="{destination/city}"
+                          responsive="true">
+                <attributes>
+                    <ObjectAttribute title="Travel From" text="{
+                        path: 'travelFrom',
+                        type: 'sap.ui.model.odata.type.Date',
+                        formatOptions: { style: 'medium' }
+                    }"/>
+                    <ObjectAttribute title="Travel To" text="{
+                        path: 'travelTo',
+                        type: 'sap.ui.model.odata.type.Date',
+                        formatOptions: { style: 'medium' }
+                    }"/>
+                </attributes>
+                <statuses>
+                    <ObjectStatus title="Cost"
+                                  text="{
+                                      parts: [
+                                          { path: 'cost' },
+                                          { path: 'currency_code' }
+                                      ],
+                                      formatter: '.formatAmount'
+                                  }"
+                                  state="Information"/>
+                </statuses>
+            </ObjectHeader>
+
+            <Panel id="travelDetailsPanel" headerText="Trip Information" class="sapUiResponsiveMargin">
+                <form:SimpleForm id="travelDetailsForm"
+                                 editable="false"
+                                 layout="ResponsiveGridLayout"
+                                 labelSpanXL="3" labelSpanL="3" labelSpanM="3" labelSpanS="12"
+                                 adjustLabelSpan="false"
+                                 emptySpanXL="2" emptySpanL="2" emptySpanM="2" emptySpanS="0"
+                                 columnsXL="1" columnsL="1" columnsM="1">
+                    <Label text="Destination"/>
+                    <Text text="{destination/name}"/>
+
+                    <Label text="City"/>
+                    <Text text="{destination/city}"/>
+
+                    <Label text="Country"/>
+                    <Text text="{destination/country}"/>
+
+                    <Label text="Travel From"/>
+                    <Text text="{
+                        path: 'travelFrom',
+                        type: 'sap.ui.model.odata.type.Date',
+                        formatOptions: { style: 'medium' }
+                    }"/>
+
+                    <Label text="Travel To"/>
+                    <Text text="{
+                        path: 'travelTo',
+                        type: 'sap.ui.model.odata.type.Date',
+                        formatOptions: { style: 'medium' }
+                    }"/>
+
+                    <Label text="Cost"/>
+                    <Text text="{
+                        parts: [
+                            { path: 'cost' },
+                            { path: 'currency_code' }
+                        ],
+                        formatter: '.formatAmount'
+                    }"/>
+
+                    <Label text="Notes"/>
+                    <Text text="{notes}"/>
+                </form:SimpleForm>
+            </Panel>
+        </content>
+        <footer>
+            <OverflowToolbar>
+                <ToolbarSpacer/>
+                <Button id="backBtn" text="Back" icon="sap-icon://nav-back" press=".onNavBack"/>
+            </OverflowToolbar>
+        </footer>
+    </Page>
+</mvc:View>

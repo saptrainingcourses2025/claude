@@ -1,0 +1,2 @@
+- [OPA5 Test Config](project_opa5_test_config.md) — TravelHub test runner, journeys, page objects, AuthStub, screenshot runner location; 5 tests/26 assertions all passing as of 2026-05-28
+- [OData V4 Decimal Formatter](feedback_odatav4_decimal_formatter.md) — Edm.Decimal values arrive at formatters as locale strings like "1,250" not "1250.00"; strip non-numerics before parseFloat

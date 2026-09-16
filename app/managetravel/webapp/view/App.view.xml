@@ -1,0 +1,18 @@
+<mvc:View controllerName="anubhav.claude.managetravel.controller.App"
+          xmlns:mvc="sap.ui.core.mvc"
+          xmlns:core="sap.ui.core"
+          xmlns="sap.m"
+          displayBlock="true">
+    <Shell>
+        <App id="appRoot">
+            <pages>
+                <Page id="shellPage" showHeader="false">
+                    <content>
+                        <core:Fragment fragmentName="anubhav.claude.managetravel.fragment.Header" type="XML"/>
+                        <NavContainer id="mainNav"/>
+                    </content>
+                </Page>
+            </pages>
+        </App>
+    </Shell>
+</mvc:View>
